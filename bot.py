@@ -1,116 +1,161 @@
 import logging
 import os
+import json
+import gspread
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CẤU HÌNH ---
-# Token của bạn (Đã điền sẵn)
-TOKEN = '8374820897:AAGLUxuxF5XqlZgHA4O6X8rmMWsJWo4sGqE' 
+TOKEN = '8374820897:AAGLUxuxF5XqlZgHA4O6X8rmMWsJWo4sGqE'  # Token của bạn
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
+# --- HÀM KẾT NỐI GOOGLE (Chạy được cả Local và Render) ---
+def get_google_client():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    
+    # 1. Ưu tiên lấy từ Biến môi trường (Trên Render)
+    json_creds = os.environ.get("GOOGLE_CREDENTIALS")
+    
+    if json_creds:
+        try:
+            creds_dict = json.loads(json_creds)
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        except Exception as e:
+            logging.error(f"Lỗi đọc biến môi trường: {e}")
+            return None
+    else:
+        # 2. Nếu không có, tìm file cred.json (Trên máy cá nhân)
+        if os.path.exists("cred.json"):
+            creds = ServiceAccountCredentials.from_json_keyfile_name("cred.json", scope)
+        else:
+            logging.error("Không tìm thấy chứng chỉ Google (cred.json hoặc ENV)")
+            return None
+
+    return gspread.authorize(creds)
+
+# --- CÁC HÀM XỬ LÝ BOT ---
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['total'] = 0
-    context.user_data['history'] = []
+    user = update.effective_user
+    # Đặt tên file theo ID để đảm bảo duy nhất và dễ tìm lại
+    sheet_name = f"ChiTieu_Bot_{user.id}" 
     
-    await update.message.reply_text(
-        "Bot quản lý chi tiêu (Render Version) sẵn sàng!\n\n"
-        "📝 **Cú pháp:**\n"
-        "- `30/1 ngô 10` => Ngày 30/1 mua Ngô 10k\n"
-        "- `10` => Hôm nay mua 'Khác' 10k\n"
-        "✅ `done` để chốt sổ.\n"
-        "📜 `/ls` xem danh sách.",
-        parse_mode='Markdown'
-    )
+    await update.message.reply_text("⏳ Đang kết nối dữ liệu của bạn...")
 
-async def ls_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    history = context.user_data.get('history', [])
-    total = context.user_data.get('total', 0)
-    
-    if not history:
-        await update.message.reply_text("📭 Danh sách trống.")
-        return
+    try:
+        gc = get_google_client()
+        if not gc:
+            await update.message.reply_text("⚠️ Lỗi kết nối Google.")
+            return
 
-    msg = "🧾 **DANH SÁCH CHI TIÊU**\n" + "-" * 25 + "\n"
-    for item in history:
-        msg += f"📅 {item['date']} | {item['name']} : {item['amount']:,.0f}\n"
-    msg += "-" * 25 + "\n" + f"💰 **TỔNG:** {total:,.0f} vnđ"
+        # --- LOGIC THÔNG MINH MỚI ---
+        try:
+            # 1. Cố gắng mở file cũ nếu đã tồn tại
+            sh = gc.open(sheet_name)
+            await update.message.reply_text(f"👋 Chào mừng trở lại! Đã tìm thấy sổ cũ của bạn.")
+        except gspread.exceptions.SpreadsheetNotFound:
+            # 2. Nếu không tìm thấy (User mới), thì tạo file mới
+            sh = gc.create(sheet_name)
+            sh.share(None, perm_type='anyone', role='writer') # Share quyền
+            
+            # Tạo dòng tiêu đề
+            worksheet = sh.sheet1
+            worksheet.append_row(["Ngày tháng", "Nội dung", "Số tiền (VNĐ)", "Ghi chú"])
+            await update.message.reply_text(f"🆕 Đã tạo sổ chi tiêu mới cho bạn.")
+        # -----------------------------
 
-    await update.message.reply_text(msg)
+        # Lưu lại ID để dùng cho các tin nhắn sau
+        context.user_data['sheet_id'] = sh.id
+        context.user_data['sheet_url'] = sh.url
+
+        await update.message.reply_text(
+            f"📂 Link sổ của bạn: [Bấm vào đây]({sh.url})\n\n"
+            f"✍️ Hãy nhập chi tiêu (VD: `30/1 Cafe 25`)",
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+
+    except Exception as e:
+        logging.error(f"Lỗi start: {e}")
+        await update.message.reply_text("⚠️ Có lỗi xảy ra, vui lòng thử lại sau.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    user_data = context.user_data
-
-    if 'total' not in user_data:
-        user_data['total'] = 0
-        user_data['history'] = []
-
-    if text.lower() == 'done':
-        final_total = user_data['total']
-        if final_total == 0:
-             await update.message.reply_text("Chưa có gì để thanh toán.")
-        else:
-            await update.message.reply_text(
-                f"✅ **Đã chốt sổ!** Tổng: {final_total:,.0f} vnđ.\nReset dữ liệu.",
-                parse_mode='Markdown'
-            )
-            user_data['total'] = 0
-            user_data['history'] = []
+    
+    # Kiểm tra xem User đã có sổ chưa (đã chạy /start chưa)
+    sheet_id = context.user_data.get('sheet_id')
+    if not sheet_id:
+        await update.message.reply_text("⚠️ Bạn chưa có sổ chi tiêu. Hãy bấm /start để tạo sổ mới trước nhé!")
         return
 
+    # Logic xử lý tin nhắn
     try:
         parts = text.split()
         amount = 0
         item_name = ""
         date_str = ""
         
+        # Trường hợp 1: Có ngày tháng (VD: 30/1 Cafe 20)
         if len(parts) >= 3 and '/' in parts[0]:
             try:
-                date_str = datetime.strptime(parts[0], "%d/%m").strftime("%d/%m")
+                date_str = datetime.strptime(parts[0], "%d/%m").strftime("%d/%m/%Y")
             except ValueError:
                 await update.message.reply_text("⛔ Sai ngày. Nhập dạng 30/1")
                 return
             amount = float(parts[-1]) * 1000
             item_name = " ".join(parts[1:-1])
 
-        elif len(parts) == 1 and parts[0].replace('.', '').isdigit():
-            amount = float(parts[0]) * 1000
-            item_name = "Khác"
-            date_str = datetime.now().strftime("%d/%m")
+        # Trường hợp 2: Không có ngày (VD: Cafe 20 -> Mặc định hôm nay)
+        elif len(parts) >= 2 and parts[-1].replace('.', '').isdigit():
+            amount = float(parts[-1]) * 1000
+            item_name = " ".join(parts[:-1])
+            date_str = datetime.now().strftime("%d/%m/%Y")
             
         else:
-            raise ValueError("Sai cú pháp")
+            await update.message.reply_text("⚠️ Sai cú pháp! Hãy nhập: `Món đồ + Giá tiền`")
+            return
 
-        user_data['total'] += amount
-        user_data['history'].append({'date': date_str, 'name': item_name, 'amount': amount})
+        # GHI VÀO GOOGLE SHEET
+        await update.message.reply_text("⏳ Đang ghi vào sổ...")
+        
+        gc = get_google_client()
+        sh = gc.open_by_key(sheet_id)
+        worksheet = sh.sheet1
+        
+        # Thêm dòng mới: Ngày | Tên | Tiền
+        worksheet.append_row([date_str, item_name, amount])
 
         await update.message.reply_text(
-            f"✅ Thêm: **{item_name}** ({date_str}) - {amount:,.0f} vnđ\n"
-            f"💰 **Tổng:** {user_data['total']:,.0f} vnđ",
-            parse_mode='Markdown'
+            f"✅ **Đã lưu!**\n"
+            f"📅 {date_str} | 🍜 {item_name} | 💸 {amount:,.0f}đ\n"
+            f"👉 [Xem sổ tại đây]({context.user_data['sheet_url']})",
+            parse_mode='Markdown',
+            disable_web_page_preview=True
         )
 
-    except ValueError:
-        await update.message.reply_text("⚠️ Sai cú pháp! Nhập `30/1 ngô 10` hoặc `10`.")
+    except Exception as e:
+        logging.error(f"Lỗi ghi sheet: {e}")
+        await update.message.reply_text("⚠️ Lỗi khi ghi vào Sheet. Có thể mạng chậm, hãy thử lại.")
 
 if __name__ == '__main__':
     # --- PHẦN TỰ ĐỘNG NHẬN DIỆN MÔI TRƯỜNG ---
-    # Render sẽ tự động cung cấp biến RENDER_EXTERNAL_URL và PORT
     WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") 
     PORT = int(os.environ.get("PORT", "8443"))
 
     application = ApplicationBuilder().token(TOKEN).build()
     
     application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('ls', ls_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Tự động chọn chế độ chạy
     if WEBHOOK_URL:
         print(f"🚀 Đang chạy trên Render (Port {PORT})...")
         application.run_webhook(
