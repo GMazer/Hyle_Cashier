@@ -510,7 +510,7 @@ async def pay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
             
         # 3. GỌI API VIETQR
-        add_info = "Thanh toan tien an sang"
+        add_info = "Thanh toan tien"
         # Xử lý khoảng trắng trong tên để truyền vào URL không bị lỗi
         safe_name = account_name.replace(' ', '%20') if account_name else ""
         
