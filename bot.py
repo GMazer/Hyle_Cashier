@@ -441,7 +441,7 @@ if __name__ == '__main__':
     
     # Đăng ký TẤT CẢ các lệnh Command
     application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('help', help_command))g
+    application.add_handler(CommandHandler('help', help_command))
     application.add_handler(CommandHandler('ls', ls_command))
     application.add_handler(CommandHandler('so', list_books_command))
     application.add_handler(CommandHandler('new', new_book_command))
