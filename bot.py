@@ -8,7 +8,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CẤU HÌNH ---
-TOKEN = '8374820897:AAGLUxuxF5XqlZgHA4O6X8rmMWsJWo4sGqE'
+TOKEN = '8374820897:AAFN5p3mmpu-fcq4OBay7lD4sUV2lVHlEHo'
 BOT_EMAIL = "bot-chi-tieu@bot-chi-tieu-485902.iam.gserviceaccount.com"
 ADMIN_ID = 1147660391
 
@@ -72,6 +72,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"1️⃣ Share quyền Editor cho: `{BOT_EMAIL}`\n2️⃣ Gửi Link Sheet vào đây để kết nối."
         )
     await update.message.reply_text(msg, parse_mode='Markdown')
+    from telegram import MenuButtonCommands
+    await context.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    await update.message.reply_text(msg, parse_mode='Markdown')
 
 # --- 2. CÁC LỆNH CƠ BẢN ---
 async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,13 +107,29 @@ async def pay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not sheet_id: return
     try:
         ws = get_google_client().open_by_key(sheet_id).sheet1
-        bank, stk, name = ws.acell('I1').value, ws.acell('I2').value, ws.acell('I3').value
-        total = int((ws.acell('G1').value or "0").replace(',','').replace('.',''))
+        bank = ws.acell('I1').value
+        
+        # ĐỌC VÀ XỬ LÝ STK: Nếu có dấu nháy đơn ở đầu thì xóa đi
+        stk_raw = ws.acell('I2').value or ""
+        stk = stk_raw.lstrip("'") 
+        
+        name = ws.acell('I3').value
+        
+        total_val = (ws.acell('G1').value or "0").replace(',','').replace('.','')
+        total = int(total_val)
+        
         if context.args: total = int(context.args[0]) * 1000
         if total <= 0: return await update.message.reply_text("🎉 Hết nợ!")
+        
+        # API VietQR với STK đã được làm sạch
         qr_url = f"https://img.vietqr.io/image/{bank}-{stk}-compact2.png?amount={total}&addInfo=Tra%20tien%20an%20sang"
-        await update.message.reply_photo(photo=qr_url, caption=f"💰 Cần trả: {total:,.0f} VNĐ cho {name}")
-    except: await update.message.reply_text("⚠️ Sổ chưa cài STK. Dùng `/setbank` trước.")
+        
+        await update.message.reply_photo(
+            photo=qr_url, 
+            caption=f"💰 Cần trả: {total:,.0f} VNĐ cho {name}\n💳 STK: `{stk}`"
+        )
+    except Exception as e: 
+        await update.message.reply_text(f"⚠️ Sổ chưa cài STK hoặc lỗi: {e}")
 
 # --- 4. XỬ LÝ TIN NHẮN & BROADCAST ---
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
