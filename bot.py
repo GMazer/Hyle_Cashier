@@ -10,6 +10,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # --- CẤU HÌNH ---
 TOKEN = '8374820897:AAGLUxuxF5XqlZgHA4O6X8rmMWsJWo4sGqE'
 BOT_EMAIL = "bot-chi-tieu@bot-chi-tieu-485902.iam.gserviceaccount.com"
+ADMIN_ID = 1147660391
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -35,25 +36,81 @@ def get_google_client():
         logging.error(f"Lỗi Auth: {e}")
         return None
     
-    # --- ÉP CẬP NHẬT MENU LỆNH CHO TELEGRAM ---
+    # --- LỆNH /BROADCAST: GỬI THÔNG BÁO HÀNG LOẠT ---
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 1. Kiểm tra quyền Admin
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Bạn không phải chủ Bot. Cấm xài chiêu này!")
+        return
+
+    # 2. Lấy nội dung thông báo
+    # Bỏ chữ /broadcast ở đầu đi để lấy phần ruột tin nhắn
+    message_to_send = update.message.text.replace('/broadcast', '').strip()
+    
+    if not message_to_send:
+        await update.message.reply_text("⚠️ Bạn chưa nhập nội dung.\n👉 Thử gõ: `/broadcast Bot sẽ bảo trì lúc 12h nhé!`", parse_mode='Markdown')
+        return
+
+    # 3. Lấy danh sách ID đã lưu
+    users = context.bot_data.get('all_users', set())
+    if not users:
+        await update.message.reply_text("📭 Chưa có ai dùng Bot cả (hoặc Bot vừa bị khởi động lại).")
+        return
+
+    # 4. Bắt đầu gửi hàng loạt
+    await update.message.reply_text(f"⏳ Đang rải truyền đơn cho {len(users)} người...")
+    success_count = 0
+    
+    for user_id in users:
+        try:
+            # Gửi tin nhắn cho từng người
+            await context.bot.send_message(
+                chat_id=user_id, 
+                text=f"📢 **THÔNG BÁO TỪ CHỦ BOT:**\n\n{message_to_send}", 
+                parse_mode='Markdown'
+            )
+            success_count += 1
+        except Exception as e:
+            # Người dùng có thể đã block Bot, ta bỏ qua họ
+            pass
+
+    await update.message.reply_text(f"✅ Hoàn tất! Đã gửi thành công tới {success_count} người.")
+    
+    # --- ÉP CẬP NHẬT & HIỂN THỊ NÚT MENU CHO TELEGRAM ---
 async def setup_commands(application):
-    from telegram import BotCommand
+    from telegram import BotCommand, MenuButtonCommands
+    
     commands = [
         BotCommand("start", "Bắt đầu / Hướng dẫn kết nối"),
         BotCommand("help", "Xem cách ghi tiền & lệnh tắt"),
         BotCommand("ls", "Xem 10 khoản chi gần nhất"),
-        BotCommand("so", "Menu chọn/đổi sổ chi tiêu"),
-        BotCommand("pay", "Tạo mã QR thanh toán (MỚI)"),
+        BotCommand("so", "Menu chọn/đổi sổ nợ"),
+        BotCommand("pay", "Tạo mã QR quét thanh toán"),
         BotCommand("setbank", "Cài ngân hàng (VD: /setbank MB 123 TÊN)"),
         BotCommand("email", "Lấy Email Bot để cấp quyền"),
         BotCommand("new", "Tạo sổ mới (VD: /new QuyDen)"),
-        BotCommand("done", "Chốt sổ (Xóa dữ liệu cũ)")
+        BotCommand("done", "Chốt sổ (Xóa sạch dữ liệu cũ)")
     ]
+    
+    # 1. Xóa sạch các lệnh cũ bị lỗi kẹt trong hệ thống
+    await application.bot.delete_my_commands()
+    
+    # 2. Bơm danh sách lệnh mới vào
     await application.bot.set_my_commands(commands)
-    print("✅ Đã cập nhật Menu lệnh thành công!")
+    
+    # 3. ÉP TELEGRAM HIỂN THỊ NÚT "MENU" LÊN MÀN HÌNH
+    await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    
+    print("✅ Đã ép Telegram hiện nút Menu thành công!")
 
 # --- 1. LỆNH /START ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# Bẫy thu thập ID người dùng
+    if 'all_users' not in context.bot_data:
+        context.bot_data['all_users'] = set()
+    context.bot_data['all_users'].add(update.effective_chat.id)
+
     user_name = update.effective_user.full_name
     books = context.user_data.get('books', {})
     current_book = context.user_data.get('current_book_name', 'Chưa chọn')
@@ -94,20 +151,25 @@ async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-# --- 3. LỆNH /HELP ---
+# --- LỆNH /HELP: HƯỚNG DẪN CHI TIẾT ---
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "📚 **HƯỚNG DẪN SỬ DỤNG**\n\n"
-        "✏️ **1. Ghi tiền:**\n"
-        "• `An sang 30` (Mặc định hôm nay, 30k)\n"
-        "• `25/1 Luong 10000` (Ghi bù ngày 25/1)\n\n"
-        "📂 **2. Quản lý Sổ:**\n"
+        "📚 **HƯỚNG DẪN SỬ DỤNG BOT**\n\n"
+        "✏️ **1. Cách ghi nợ:**\n"
+        "• `Banh mi 20` (Hôm nay, 20k)\n"
+        "• `25/1 Banh mi 20` (Ghi bù ngày 25/1)\n\n"
+        "🏦 **2. Thanh toán QR (MỚI):**\n"
+        "• `/setbank MB 0123456789 TEN` : Cài STK cho sổ hiện tại.\n"
+        "• `/pay` : Tạo mã QR thanh toán toàn bộ tiền nợ.\n"
+        "• `/pay 50` : Tạo mã QR để thanh toán 50k.\n\n"
+        "📂 **3. Quản lý Sổ:**\n"
         "• Gửi Link Sheet: Thêm sổ thủ công.\n"
-        "• `/so` : Menu chọn sổ.\n"
-        "• `/new TenSo` : Tự động tạo sổ mới.\n\n"
-        "🛠 **3. Tiện ích:**\n"
-        "• `/ls` : Xem 10 dòng cuối.\n"
-        "• `/done` : Chốt sổ (Xóa sạch dữ liệu cũ)."
+        "• `/so` : Đổi qua lại giữa các sổ.\n"
+        "• `/new TenSo` : Tự động tạo sổ nợ mới.\n\n"
+        "🛠 **4. Tiện ích:**\n"
+        "• `/ls` : Xem 10 dòng chi tiết gần nhất.\n"
+        "• `/email` : Xem email Bot để cấp quyền Sheet.\n"
+        "• `/done` : Chốt sổ, xóa sạch dữ liệu cũ."
     )
     await update.message.reply_text(msg, parse_mode='Markdown')
 
@@ -224,6 +286,11 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- 9. XỬ LÝ TIN NHẮN (NHẬP TIỀN / NHẬN LINK) ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
+
+    # Bẫy thu thập ID người dùng
+    if 'all_users' not in context.bot_data:
+        context.bot_data['all_users'] = set()
+    context.bot_data['all_users'].add(update.effective_chat.id)
     
     # 9.1 NHẬN LINK SỔ
     if "docs.google.com/spreadsheets" in text:
@@ -311,8 +378,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Lỗi: {str(e)}")
-
-        # --- LỆNH /SETBANK: CÀI ĐẶT NGÂN HÀNG CHO SỔ HIỆN TẠI ---
+# --- LỆNH /SETBANK: CÀI ĐẶT NGÂN HÀNG CHO SỔ HIỆN TẠI ---
 async def set_bank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheet_id = context.user_data.get('current_sheet_id')
     if not sheet_id:
@@ -331,6 +397,41 @@ async def set_bank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         return
+
+    # Tách dữ liệu người dùng nhập
+    bank_code = args[0].upper()
+    account_no = args[1]
+    account_name = " ".join(args[2:]).upper()
+
+    try:
+        await update.message.reply_text("⏳ Đang lưu thông tin tài khoản vào sổ...")
+        gc = get_google_client()
+        ws = gc.open_by_key(sheet_id).sheet1
+        
+        # Lưu vào cột H và I trên Sheet
+        ws.update_acell('H1', "NGÂN HÀNG:")
+        ws.update_acell('I1', bank_code)
+        
+        ws.update_acell('H2', "STK:")
+        # BÍ QUYẾT FIX LỖI MẤT SỐ 0: Thêm dấu nháy đơn (') vào trước số tài khoản
+        ws.update_acell('I2', f"'{account_no}")
+        
+        ws.update_acell('H3', "TÊN CHỦ THẺ:")
+        ws.update_acell('I3', account_name)
+
+        # In đậm cột H cho dễ nhìn
+        ws.format("H1:H3", {"textFormat": {"bold": True}})
+
+        await update.message.reply_text(
+            f"✅ **ĐÃ LƯU TÀI KHOẢN CHO SỔ NÀY!**\n\n"
+            f"🏦 Ngân hàng: {bank_code}\n"
+            f"💳 STK: {account_no}\n"
+            f"👤 Tên: {account_name}\n\n"
+            f"👉 Giờ bạn có thể dùng lệnh `/pay` để quét mã QR nhé.",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Lỗi khi lưu vào Google Sheet: {str(e)}")
 
     # Tách dữ liệu người dùng nhập
     bank_code = args[0].upper()
@@ -449,6 +550,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('done', done_command)) # <--- Đã thêm lệnh /done
     application.add_handler(CommandHandler('setbank', set_bank_command))
     application.add_handler(CommandHandler('pay', pay_command))
+    application.add_handler(CommandHandler('broadcast', broadcast_command))
     
     # Đăng ký xử lý nút bấm
     application.add_handler(CallbackQueryHandler(button_callback))
