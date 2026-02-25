@@ -194,19 +194,37 @@ async def done_command(update, context):
     ws.batch_clear(['A2:D1000'])
     await update.message.reply_text("✅ Đã xóa trắng sổ nợ.")
 
+# --- MAIN BLOCK ---
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(TOKEN).post_init(setup_commands).build()
-    app.add_handler(CommandHandler('help', help_command))
-    app.add_handler(CommandHandler('ls', ls_command))
-    app.add_handler(CommandHandler('so', list_books_command))
-    app.add_handler(CommandHandler('email', email_command))
-    app.add_handler(CommandHandler('pay', pay_command))
-    app.add_handler(CommandHandler('setbank', set_bank_command))
-    app.add_handler(CommandHandler('done', done_command))
-    app.add_handler(CommandHandler('broadcast', broadcast_command))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # 1. Khởi tạo Application
+    # Mình bỏ post_init để tránh xung đột gây lặp tin nhắn
+    application = ApplicationBuilder().token(TOKEN).build()
     
-    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL")
-    if WEBHOOK_URL: app.run_webhook(listen="0.0.0.0", port=int(os.environ.get("PORT", 8443)), url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}/{TOKEN}")
-    else: app.run_polling()
+    # 2. Đăng ký TẤT CẢ các lệnh (Viết ở đây là chắc ăn nhất)
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('help', help_command))
+    application.add_handler(CommandHandler('ls', ls_command))
+    application.add_handler(CommandHandler('so', list_books_command))
+    application.add_handler(CommandHandler('new', new_book_command))
+    application.add_handler(CommandHandler('email', email_command))
+    application.add_handler(CommandHandler('done', done_command))
+    application.add_handler(CommandHandler('setbank', set_bank_command))
+    application.add_handler(CommandHandler('pay', pay_command))
+    application.add_handler(CommandHandler('broadcast', broadcast_command))
+    
+    # Đăng ký xử lý nút bấm & tin nhắn text
+    application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # 3. Chạy Bot
+    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") 
+    PORT = int(os.environ.get("PORT", "8443"))
+
+    if WEBHOOK_URL:
+        # Khi chạy Webhook, ta gọi setup_commands thủ công một lần để ép hiện Menu
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(setup_commands(application))
+        
+        application.run_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}/{TOKEN}")
+    else:
+        application.run_polling()
