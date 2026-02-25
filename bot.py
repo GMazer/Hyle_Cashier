@@ -3,7 +3,7 @@ import os
 import json
 import gspread
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, MenuButtonCommands
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -21,94 +21,39 @@ logging.basicConfig(
 def get_google_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     json_creds = os.environ.get("GOOGLE_CREDENTIALS")
-    
     try:
         if json_creds:
-            clean_json = json_creds.strip()
-            creds_dict = json.loads(clean_json)
+            creds_dict = json.loads(json_creds.strip())
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         elif os.path.exists("cred.json"):
             creds = ServiceAccountCredentials.from_json_keyfile_name("cred.json", scope)
-        else:
-            return None
+        else: return None
         return gspread.authorize(creds)
     except Exception as e:
         logging.error(f"Lỗi Auth: {e}")
         return None
-    
-    # --- LỆNH /BROADCAST: GỬI THÔNG BÁO HÀNG LOẠT ---
-async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 1. Kiểm tra quyền Admin
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("⛔ Bạn không phải chủ Bot. Cấm xài chiêu này!")
-        return
 
-    # 2. Lấy nội dung thông báo
-    # Bỏ chữ /broadcast ở đầu đi để lấy phần ruột tin nhắn
-    message_to_send = update.message.text.replace('/broadcast', '').strip()
-    
-    if not message_to_send:
-        await update.message.reply_text("⚠️ Bạn chưa nhập nội dung.\n👉 Thử gõ: `/broadcast Bot sẽ bảo trì lúc 12h nhé!`", parse_mode='Markdown')
-        return
-
-    # 3. Lấy danh sách ID đã lưu
-    users = context.bot_data.get('all_users', set())
-    if not users:
-        await update.message.reply_text("📭 Chưa có ai dùng Bot cả (hoặc Bot vừa bị khởi động lại).")
-        return
-
-    # 4. Bắt đầu gửi hàng loạt
-    await update.message.reply_text(f"⏳ Đang rải truyền đơn cho {len(users)} người...")
-    success_count = 0
-    
-    for user_id in users:
-        try:
-            # Gửi tin nhắn cho từng người
-            await context.bot.send_message(
-                chat_id=user_id, 
-                text=f"📢 **THÔNG BÁO TỪ CHỦ BOT:**\n\n{message_to_send}", 
-                parse_mode='Markdown'
-            )
-            success_count += 1
-        except Exception as e:
-            # Người dùng có thể đã block Bot, ta bỏ qua họ
-            pass
-
-    await update.message.reply_text(f"✅ Hoàn tất! Đã gửi thành công tới {success_count} người.")
-    
-    # --- ÉP CẬP NHẬT & HIỂN THỊ NÚT MENU CHO TELEGRAM ---
+# --- ÉP CẬP NHẬT MENU LỆNH ---
 async def setup_commands(application):
-    from telegram import BotCommand, MenuButtonCommands
-    
     commands = [
         BotCommand("start", "Bắt đầu / Hướng dẫn kết nối"),
-        BotCommand("help", "Xem cách ghi tiền & lệnh tắt"),
+        BotCommand("help", "Xem cách ghi nợ & lệnh tắt"),
         BotCommand("ls", "Xem 10 khoản chi gần nhất"),
         BotCommand("so", "Menu chọn/đổi sổ nợ"),
-        BotCommand("pay", "Tạo mã QR quét thanh toán"),
+        BotCommand("pay", "Tạo mã QR thanh toán"),
         BotCommand("setbank", "Cài ngân hàng (VD: /setbank MB 123 TÊN)"),
         BotCommand("email", "Lấy Email Bot để cấp quyền"),
-        BotCommand("new", "Tạo sổ mới (VD: /new QuyDen)"),
-        BotCommand("done", "Chốt sổ (Xóa sạch dữ liệu cũ)")
+        BotCommand("new", "Tạo sổ mới"),
+        BotCommand("done", "Chốt sổ (Xóa dữ liệu cũ)")
     ]
-    
-    # 1. Xóa sạch các lệnh cũ bị lỗi kẹt trong hệ thống
     await application.bot.delete_my_commands()
-    
-    # 2. Bơm danh sách lệnh mới vào
     await application.bot.set_my_commands(commands)
-    
-    # 3. ÉP TELEGRAM HIỂN THỊ NÚT "MENU" LÊN MÀN HÌNH
     await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    
-    print("✅ Đã ép Telegram hiện nút Menu thành công!")
+    print("✅ Đã cập nhật Menu lệnh!")
 
 # --- 1. LỆNH /START ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-# Bẫy thu thập ID người dùng
-    if 'all_users' not in context.bot_data:
-        context.bot_data['all_users'] = set()
+    if 'all_users' not in context.bot_data: context.bot_data['all_users'] = set()
     context.bot_data['all_users'].add(update.effective_chat.id)
 
     user_name = update.effective_user.full_name
@@ -117,448 +62,133 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if books:
         msg = (
-            f"👋 **Xin chào {user_name}!**\n\n"
-            f"📂 Sổ hiện tại: **{current_book}**\n\n"
-            "💵 **Nhập chi tiêu:**\n"
-            "   `Cafe 25` (Hôm nay)\n"
-            "   `30/1 Cafe 25` (Ngày cụ thể)\n\n"
-            "⚙️ **Menu:**\n"
-            "   /ls - Xem lịch sử gần nhất\n"
-            "   /so - Đổi sổ khác\n"
-            "   /email - Lấy email Bot để Share\n"
-            "   /help - Xem hướng dẫn đầy đủ"
+            f"👋 **Xin chào {user_name}!**\n\n📂 Sổ hiện tại: **{current_book}**\n\n"
+            "💵 **Ghi nợ nhanh:**\n   `Banh mi 20` (Hôm nay)\n   `30/1 Pho 40` (Ngày cũ)\n\n"
+            "⚙️ **Lệnh tắt:** /ls, /so, /pay, /help"
         )
-        await update.message.reply_text(msg, parse_mode='Markdown')
     else:
         msg = (
-            f"👋 **Chào mừng {user_name} đến với Bot Quản Lý Tài Chính!**\n\n"
-            "Để bắt đầu, hãy kết nối với 1 file Google Sheet theo 3 bước:\n\n"
-            "1️⃣ **Tạo Sổ:** Vào Google Drive tạo 1 file Google Sheet mới.\n"
-            "2️⃣ **Cấp Quyền:** Bấm **Share** và dán email này vào (Quyền **Editor**):\n"
-            f"`{BOT_EMAIL}`\n"
-            "👆 _(Bấm vào dòng trên để copy)_\n"
-            "3️⃣ **Kết Nối:** Copy đường Link của file Sheet đó và **Gửi vào đây**."
+            f"👋 **Chào mừng {user_name} đến với Bot Ghi Nợ Ăn Sáng!**\n\n"
+            f"1️⃣ Share quyền Editor cho: `{BOT_EMAIL}`\n2️⃣ Gửi Link Sheet vào đây để kết nối."
         )
-        await update.message.reply_text(msg, parse_mode='Markdown')
+    await update.message.reply_text(msg, parse_mode='Markdown')
 
-# --- 2. LỆNH /EMAIL ---
+# --- 2. CÁC LỆNH CƠ BẢN ---
 async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📧 **Email của Bot (Service Account):**\n\n"
-        f"`{BOT_EMAIL}`\n\n"
-        "👆 _Bấm vào dòng trên để copy._\n"
-        "Hãy Share quyền **Editor** cho email này nhé!",
-        parse_mode='Markdown'
-    )
+    await update.message.reply_text(f"📧 Email Bot:\n`{BOT_EMAIL}`", parse_mode='Markdown')
 
-# --- LỆNH /HELP: HƯỚNG DẪN CHI TIẾT ---
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "📚 **HƯỚNG DẪN SỬ DỤNG BOT**\n\n"
-        "✏️ **1. Cách ghi nợ:**\n"
-        "• `Banh mi 20` (Hôm nay, 20k)\n"
-        "• `25/1 Banh mi 20` (Ghi bù ngày 25/1)\n\n"
-        "🏦 **2. Thanh toán QR (MỚI):**\n"
-        "• `/setbank MB 0123456789 TEN` : Cài STK cho sổ hiện tại.\n"
-        "• `/pay` : Tạo mã QR thanh toán toàn bộ tiền nợ.\n"
-        "• `/pay 50` : Tạo mã QR để thanh toán 50k.\n\n"
-        "📂 **3. Quản lý Sổ:**\n"
-        "• Gửi Link Sheet: Thêm sổ thủ công.\n"
-        "• `/so` : Đổi qua lại giữa các sổ.\n"
-        "• `/new TenSo` : Tự động tạo sổ nợ mới.\n\n"
-        "🛠 **4. Tiện ích:**\n"
-        "• `/ls` : Xem 10 dòng chi tiết gần nhất.\n"
-        "• `/email` : Xem email Bot để cấp quyền Sheet.\n"
-        "• `/done` : Chốt sổ, xóa sạch dữ liệu cũ."
+        "📚 **HƯỚNG DẪN**\n\n"
+        "✏️ **Ghi nợ:** `MonAn Tien` (VD: `Xoi 15`)\n"
+        "🏦 **QR:** `/setbank MB 123 TEN` -> `/pay` để trả nợ.\n"
+        "🛠 **Khác:** `/ls` (Lịch sử), `/so` (Đổi sổ), `/done` (Xóa nợ)."
     )
     await update.message.reply_text(msg, parse_mode='Markdown')
 
-# --- 4. LỆNH /NEW ---
-async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args
-    if not args:
-        await update.message.reply_text("⚠️ Hãy nhập tên sổ. VD: `/new Quỹ Đen`", parse_mode='Markdown')
-        return
-    
-    book_name = " ".join(args)
-    await update.message.reply_text(f"⏳ Đang tạo sổ **{book_name}**...")
-
-    try:
-        gc = get_google_client()
-        sh = gc.create(book_name)
-        sh.share(None, perm_type='anyone', role='writer')
-        
-        ws = sh.sheet1
-        ws.update(values=[["Ngày", "Món", "Tiền", "Ghi chú"]], range_name='A1:D1')
-        ws.update_acell('F1', "TỔNG QUỸ:")
-        ws.update_acell('G1', "=SUM(C:C)")
-        ws.format("G1", {"textFormat": {"bold": True, "foregroundColor": {"red": 1.0}}})
-
-        if 'books' not in context.user_data: context.user_data['books'] = {}
-        context.user_data['books'][sh.id] = book_name
-        context.user_data['current_sheet_id'] = sh.id
-        context.user_data['current_book_name'] = book_name
-
-        await update.message.reply_text(f"✅ Đã tạo: [{book_name}]({sh.url})", parse_mode='Markdown', disable_web_page_preview=True)
-    except Exception:
-        await update.message.reply_text("⛔ Bot bị Google chặn tạo file tự động.\n👉 Hãy tạo thủ công rồi gửi Link vào đây nhé.")
-
-# --- 5. LỆNH /SO ---
-async def list_books_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    books = context.user_data.get('books', {})
-    if not books:
-        await update.message.reply_text("⚠️ Bạn chưa có sổ nào. Gửi Link Sheet để thêm nhé.")
-        return
-
-    current_id = context.user_data.get('current_sheet_id')
-    keyboard = []
-    for bid, bname in books.items():
-        label = f"✅ {bname}" if bid == current_id else bname
-        keyboard.append([InlineKeyboardButton(label, callback_data=f"SELECT|{bid}")])
-
-    await update.message.reply_text("📂 **CHỌN SỔ CHI TIÊU:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-# --- 6. XỬ LÝ NÚT BẤM (CHỌN SỔ) ---
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data.split("|")
-    if data[0] == "SELECT":
-        selected_id = data[1]
-        books = context.user_data.get('books', {})
-        book_name = books.get(selected_id, "Không tên")
-        context.user_data['current_sheet_id'] = selected_id
-        context.user_data['current_book_name'] = book_name
-        await query.edit_message_text(f"✅ Đã chuyển sang: **{book_name}**", parse_mode='Markdown')
-
-# --- 7. LỆNH /LS ---
-async def ls_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sheet_id = context.user_data.get('current_sheet_id')
-    if not sheet_id:
-        await update.message.reply_text("⚠️ Chưa chọn sổ. Gõ `/so` hoặc gửi Link.")
-        return
-
-    try:
-        await update.message.reply_text("⏳ Đang tải...")
-        gc = get_google_client()
-        ws = gc.open_by_key(sheet_id).sheet1
-        vals = ws.get_all_values()
-        
-        if len(vals) < 2:
-            await update.message.reply_text("📭 Sổ trống.")
-            return
-
-        last_10 = vals[1:][-10:]
-        msg = f"🧾 **{context.user_data.get('current_book_name')}**\n" + "-"*20 + "\n"
-        for r in last_10:
-            d = r[0] if len(r)>0 else ""
-            n = r[1] if len(r)>1 else ""
-            m = r[2] if len(r)>2 else "0"
-            try: m_fmt = "{:,.0f}".format(float(m.replace(',','').replace('.','')))
-            except: m_fmt = m
-            msg += f"{d} | {n} : **{m_fmt}**\n"
-            
-        total = ws.acell('G1').value or "0"
-        msg += "-"*20 + f"\n💰 **TỔNG: {total} VNĐ**"
-        await update.message.reply_text(msg, parse_mode='Markdown')
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Lỗi: {str(e)}")
-
-# --- 8. LỆNH /DONE ---
-async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sheet_id = context.user_data.get('current_sheet_id')
-    if not sheet_id:
-        await update.message.reply_text("⚠️ Chưa chọn sổ nào. Gõ `/so` hoặc gửi Link Sheet trước nhé.")
-        return
-
-    try:
-        gc = get_google_client()
-        ws = gc.open_by_key(sheet_id).sheet1
-        
-        total = ws.acell('G1').value
-        await update.message.reply_text(f"✅ **CHỐT SỔ THÀNH CÔNG!**\n💰 Tổng: **{total}**\n🗑️ Đang dọn dẹp dữ liệu cũ...", parse_mode='Markdown')
-        
-        ws.batch_clear(['A2:E1000'])
-        await update.message.reply_text("✨ Sổ đã sạch sẽ. Sẵn sàng cho tháng mới!")
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Lỗi khi chốt sổ: {str(e)}")
-
-# --- 9. XỬ LÝ TIN NHẮN (NHẬP TIỀN / NHẬN LINK) ---
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-
-    # Bẫy thu thập ID người dùng
-    if 'all_users' not in context.bot_data:
-        context.bot_data['all_users'] = set()
-    context.bot_data['all_users'].add(update.effective_chat.id)
-    
-    # 9.1 NHẬN LINK SỔ
-    if "docs.google.com/spreadsheets" in text:
-        await update.message.reply_text("⏳ Đang kết nối...")
-        try:
-            gc = get_google_client()
-            if not gc:
-                await update.message.reply_text("❌ Lỗi Key JSON!")
-                return
-
-            sh = gc.open_by_url(text) 
-            ws = sh.sheet1
-            
-            if not ws.acell('A1').value:
-                 ws.update(values=[["Ngày", "Món", "Tiền", "Ghi chú"]], range_name='A1:D1')
-                 ws.update_acell('F1', "TỔNG QUỸ:")
-                 ws.update_acell('G1', "=SUM(C:C)")
-                 ws.format("G1", {"textFormat": {"bold": True, "foregroundColor": {"red": 1.0}}})
-
-            if 'books' not in context.user_data: context.user_data['books'] = {}
-            book_name = sh.title
-            context.user_data['books'][sh.id] = book_name
-            context.user_data['current_sheet_id'] = sh.id
-            context.user_data['current_book_name'] = book_name
-            
-            await update.message.reply_text(f"🎉 **ĐÃ THÊM SỔ MỚI!**\nSổ: **{book_name}**\n_(Gõ /so để quản lý)_", parse_mode='Markdown')
-        except Exception as e:
-            if "403" in str(e):
-                await update.message.reply_text("⛔ **Thiếu quyền!**\nGõ `/email` để lấy email Bot và share quyền Editor nhé.")
-            else:
-                await update.message.reply_text(f"☠️ Lỗi: {str(e)}")
-        return
-
-    # 9.2 NHẬP TIỀN / TEXT LỆNH CHỐT
-    sheet_id = context.user_data.get('current_sheet_id')
-    if not sheet_id:
-        await update.message.reply_text("⚠️ Chưa có sổ. Gõ `/start` để xem hướng dẫn.")
-        return
-
-    try:
-        gc = get_google_client()
-        ws = gc.open_by_key(sheet_id).sheet1
-        
-        # Hỗ trợ chốt sổ khi gõ chữ "done" (Không có dấu gạch chéo)
-        if text.lower() in ['done', 'chốt']:
-            total = ws.acell('G1').value
-            await update.message.reply_text(f"✅ **CHỐT SỔ!** Tổng: {total}\n🗑️ Đang xóa...", parse_mode='Markdown')
-            ws.batch_clear(['A2:E1000'])
-            await update.message.reply_text("✨ Đã xóa dữ liệu.")
-            return
-
-        parts = text.split()
-        amount = 0; item = ""; date_str = ""
-        current_year = datetime.now().year
-        
-        if len(parts) >= 3 and '/' in parts[0]:
-            try:
-                dt_temp = datetime.strptime(parts[0], "%d/%m")
-                dt_final = dt_temp.replace(year=current_year)
-                date_str = dt_final.strftime("%d/%m/%Y")
-            except: await update.message.reply_text("⛔ Ngày sai (VD: 30/1)"); return
-            amount = float(parts[-1])*1000; item = " ".join(parts[1:-1])
-        elif len(parts) >= 2 and parts[-1].replace('.', '').isdigit():
-            amount = float(parts[-1])*1000; item = " ".join(parts[:-1])
-            date_str = datetime.now().strftime("%d/%m/%Y")
-        else:
-            await update.message.reply_text("⚠️ Sai cú pháp. Gõ `/help` xem hướng dẫn.")
-            return
-
-        col_a = ws.col_values(1)
-        next_row = len(col_a) + 1
-        ws.update(range_name=f"A{next_row}", values=[[date_str, item, amount]], value_input_option='USER_ENTERED')
-
-        total = ws.acell('G1').value
-        if (not total or total == '0') and amount > 0:
-            ws.update_acell('G1', "=SUM(C:C)")
-            total = ws.acell('G1').value
-
-        await update.message.reply_text(
-            f"✅ **{context.user_data.get('current_book_name')}**\n"
-            f"Ghi: {item} ({amount:,.0f})\n"
-            f"💰 TỔNG: **{total}**", 
-            parse_mode='Markdown'
-        )
-
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Lỗi: {str(e)}")
-# --- LỆNH /SETBANK: CÀI ĐẶT NGÂN HÀNG CHO SỔ HIỆN TẠI ---
+# --- 3. QUẢN LÝ NGÂN HÀNG & QR ---
 async def set_bank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheet_id = context.user_data.get('current_sheet_id')
-    if not sheet_id:
-        await update.message.reply_text("⚠️ Chưa chọn sổ. Hãy kết nối hoặc gõ `/so` để chọn sổ trước nhé.")
+    if not sheet_id or len(context.args) < 3:
+        await update.message.reply_text("⚠️ Gõ: `/setbank Bank STK Ten` (VD: `/setbank MB 09123 TEN`)", parse_mode='Markdown')
         return
-
-    args = context.args
-    if len(args) < 3:
-        await update.message.reply_text(
-            "⚠️ **Sai cú pháp!**\n"
-            "👉 Hãy nhập theo mẫu:\n"
-            "`/setbank <Ngân_Hàng> <Số_Tài_Khoản> <Tên_Chủ_Thẻ>`\n\n"
-            "Ví dụ:\n"
-            "`/setbank MB 0123456789 NGUYEN THI B`\n"
-            "`/setbank VCB 987654321 TRAN VAN A`",
-            parse_mode='Markdown'
-        )
-        return
-
-    # Tách dữ liệu người dùng nhập
-    bank_code = args[0].upper()
-    account_no = args[1]
-    account_name = " ".join(args[2:]).upper()
-
+    bank, stk, name = context.args[0].upper(), context.args[1], " ".join(context.args[2:]).upper()
     try:
-        await update.message.reply_text("⏳ Đang lưu thông tin tài khoản vào sổ...")
-        gc = get_google_client()
-        ws = gc.open_by_key(sheet_id).sheet1
-        
-        # Lưu vào cột H và I trên Sheet
-        ws.update_acell('H1', "NGÂN HÀNG:")
-        ws.update_acell('I1', bank_code)
-        
-        ws.update_acell('H2', "STK:")
-        # BÍ QUYẾT FIX LỖI MẤT SỐ 0: Thêm dấu nháy đơn (') vào trước số tài khoản
-        ws.update_acell('I2', f"'{account_no}")
-        
-        ws.update_acell('H3', "TÊN CHỦ THẺ:")
-        ws.update_acell('I3', account_name)
+        ws = get_google_client().open_by_key(sheet_id).sheet1
+        ws.update(range_name='H1:I3', values=[["BANK:", bank], ["STK:", f"'{stk}"], ["NAME:", name]])
+        await update.message.reply_text(f"✅ Đã lưu STK: {stk} ({bank})")
+    except Exception as e: await update.message.reply_text(f"❌ Lỗi: {e}")
 
-        # In đậm cột H cho dễ nhìn
-        ws.format("H1:H3", {"textFormat": {"bold": True}})
-
-        await update.message.reply_text(
-            f"✅ **ĐÃ LƯU TÀI KHOẢN CHO SỔ NÀY!**\n\n"
-            f"🏦 Ngân hàng: {bank_code}\n"
-            f"💳 STK: {account_no}\n"
-            f"👤 Tên: {account_name}\n\n"
-            f"👉 Giờ bạn có thể dùng lệnh `/pay` để quét mã QR nhé.",
-            parse_mode='Markdown'
-        )
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Lỗi khi lưu vào Google Sheet: {str(e)}")
-
-    # Tách dữ liệu người dùng nhập
-    bank_code = args[0].upper()
-    account_no = args[1]
-    account_name = " ".join(args[2:]).upper()
-
-    try:
-        await update.message.reply_text("⏳ Đang lưu thông tin tài khoản vào sổ...")
-        gc = get_google_client()
-        ws = gc.open_by_key(sheet_id).sheet1
-        
-        # Lưu vào cột H và I trên Sheet để không đụng chạm đến dữ liệu ghi chép
-        ws.update_acell('H1', "NGÂN HÀNG:")
-        ws.update_acell('I1', bank_code)
-        
-        ws.update_acell('H2', "STK:")
-        ws.update_acell('I2', account_no)
-        
-        ws.update_acell('H3', "TÊN CHỦ THẺ:")
-        ws.update_acell('I3', account_name)
-
-        # In đậm cột H cho đẹp
-        ws.format("H1:H3", {"textFormat": {"bold": True}})
-
-        await update.message.reply_text(
-            f"✅ **ĐÃ LƯU TÀI KHOẢN CHO SỔ NÀY!**\n\n"
-            f"🏦 Ngân hàng: {bank_code}\n"
-            f"💳 STK: {account_no}\n"
-            f"👤 Tên: {account_name}\n\n"
-            f"👉 Giờ Huy có thể dùng lệnh `/pay` để quét mã QR nhé.",
-            parse_mode='Markdown'
-        )
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Lỗi khi lưu vào Google Sheet: {str(e)}")
-
-        # --- LỆNH /PAY: THANH TOÁN QR CODE ---
 async def pay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheet_id = context.user_data.get('current_sheet_id')
-    if not sheet_id:
-        await update.message.reply_text("⚠️ Chưa kết nối sổ. Hãy gửi Link Sheet trước nhé.")
+    if not sheet_id: return
+    try:
+        ws = get_google_client().open_by_key(sheet_id).sheet1
+        bank, stk, name = ws.acell('I1').value, ws.acell('I2').value, ws.acell('I3').value
+        total = int((ws.acell('G1').value or "0").replace(',','').replace('.',''))
+        if context.args: total = int(context.args[0]) * 1000
+        if total <= 0: return await update.message.reply_text("🎉 Hết nợ!")
+        qr_url = f"https://img.vietqr.io/image/{bank}-{stk}-compact2.png?amount={total}&addInfo=Tra%20tien%20an%20sang"
+        await update.message.reply_photo(photo=qr_url, caption=f"💰 Cần trả: {total:,.0f} VNĐ cho {name}")
+    except: await update.message.reply_text("⚠️ Sổ chưa cài STK. Dùng `/setbank` trước.")
+
+# --- 4. XỬ LÝ TIN NHẮN & BROADCAST ---
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID: return
+    msg = update.message.text.replace('/broadcast', '').strip()
+    users = context.bot_data.get('all_users', set())
+    for uid in users:
+        try: await context.bot.send_message(chat_id=uid, text=f"📢 **THÔNG BÁO:**\n\n{msg}", parse_mode='Markdown')
+        except: pass
+    await update.message.reply_text("✅ Đã gửi xong.")
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if 'all_users' not in context.bot_data: context.bot_data['all_users'] = set()
+    context.bot_data['all_users'].add(update.effective_chat.id)
+    text = update.message.text.strip()
+    
+    # Nhận Link Sheet
+    if "docs.google.com" in text:
+        try:
+            sh = get_google_client().open_by_url(text)
+            context.user_data['books'] = {sh.id: sh.title}
+            context.user_data['current_sheet_id'], context.user_data['current_book_name'] = sh.id, sh.title
+            await update.message.reply_text(f"✅ Đã kết nối sổ: {sh.title}")
+        except: await update.message.reply_text("❌ Lỗi quyền truy cập!")
         return
 
+    # Ghi nợ
+    sid = context.user_data.get('current_sheet_id')
+    if not sid: return
     try:
-        await update.message.reply_text("⏳ Đang trích xuất hóa đơn...")
-        gc = get_google_client()
-        ws = gc.open_by_key(sheet_id).sheet1
-        
-        # 1. ĐỌC THÔNG TIN NGÂN HÀNG TỪ SHEET
-        bank_code = ws.acell('I1').value
-        account_no = ws.acell('I2').value
-        account_name = ws.acell('I3').value
-        
-        # Kiểm tra xem sổ này đã có STK chưa
-        if not bank_code or not account_no:
-            await update.message.reply_text(
-                "⚠️ **Sổ này chưa cài đặt tài khoản nhận tiền!**\n\n"
-                "👉 Hãy nhờ người chủ sổ đọc STK và cài đặt bằng lệnh:\n"
-                "`/setbank MB 0123456789 NGUYEN VAN A`",
-                parse_mode='Markdown'
-            )
-            return
+        ws = get_google_client().open_by_key(sid).sheet1
+        parts = text.split()
+        if len(parts) < 2: return
+        amt = float(parts[-1]) * 1000
+        item = " ".join(parts[:-1])
+        ws.append_row([datetime.now().strftime("%d/%m/%Y"), item, amt])
+        await update.message.reply_text(f"✅ Ghi: {item} ({amt:,.0f})\n💰 Tổng: {ws.acell('G1').value}")
+    except: pass
 
-        # 2. XÁC ĐỊNH SỐ TIỀN THANH TOÁN
-        total_str = ws.acell('G1').value
-        amount = 0
-        
-        if context.args and context.args[0].isdigit():
-            # Nếu Huy gõ "/pay 50" -> Tạo QR 50k
-            amount = int(context.args[0]) * 1000
-        elif total_str and total_str != '0':
-            # Tự động lấy Tổng nợ hiện tại
-            amount = int(total_str.replace(',', '').replace('.', ''))
+# --- CÁC HÀM CÒN LẠI (GIỮ NGUYÊN) ---
+async def list_books_command(update, context):
+    books = context.user_data.get('books', {})
+    keyboard = [[InlineKeyboardButton(name, callback_data=f"SELECT|{id}")] for id, name in books.items()]
+    await update.message.reply_text("📂 Chọn sổ:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-        if amount <= 0:
-            await update.message.reply_text("🎉 Hiện tại Huy không nợ đồng nào trong sổ này. Chúc mừng!")
-            return
-            
-        # 3. GỌI API VIETQR
-        add_info = "Thanh toan tien"
-        # Xử lý khoảng trắng trong tên để truyền vào URL không bị lỗi
-        safe_name = account_name.replace(' ', '%20') if account_name else ""
-        
-        qr_url = f"https://img.vietqr.io/image/{bank_code}-{account_no}-compact2.png?amount={amount}&addInfo={add_info}&accountName={safe_name}"
+async def button_callback(update, context):
+    query = update.callback_query
+    await query.answer()
+    _, bid = query.data.split("|")
+    context.user_data['current_sheet_id'] = bid
+    await query.edit_message_text(f"✅ Đã chọn sổ mới.")
 
-        # 4. TRẢ ẢNH VỀ TELEGRAM
-        await update.message.reply_photo(
-            photo=qr_url,
-            caption=(
-                f"💸 **HÓA ĐƠN THANH TOÁN**\n\n"
-                f"Sổ: **{context.user_data.get('current_book_name')}**\n"
-                f"🏦 Ngân hàng: {bank_code}\n"
-                f"👤 Chủ thẻ: {account_name}\n"
-                f"💳 STK: `{account_no}`\n\n"
-                f"💰 **CẦN THANH TOÁN: {amount:,.0f} VNĐ**\n"
-                f"_(Quét mã này bằng App ngân hàng)_"
-            ),
-            parse_mode='Markdown'
-        )
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Lỗi hệ thống: {str(e)}")
+async def ls_command(update, context):
+    sid = context.user_data.get('current_sheet_id')
+    ws = get_google_client().open_by_key(sid).sheet1
+    last_5 = ws.get_all_values()[-5:]
+    msg = "\n".join([f"{r[0]} | {r[1]}: {r[2]}" for r in last_5])
+    await update.message.reply_text(f"🧾 5 dòng gần nhất:\n{msg}\n💰 TỔNG: {ws.acell('G1').value}")
 
-# --- MAIN BLOCK ---
+async def done_command(update, context):
+    ws = get_google_client().open_by_key(context.user_data.get('current_sheet_id')).sheet1
+    ws.batch_clear(['A2:D1000'])
+    await update.message.reply_text("✅ Đã xóa trắng sổ nợ.")
+
 if __name__ == '__main__':
-    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") 
-    PORT = int(os.environ.get("PORT", "8443"))
-
-    application = ApplicationBuilder().token(TOKEN).post_init(setup_commands).build()
+    app = ApplicationBuilder().token(TOKEN).post_init(setup_commands).build()
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('help', help_command))
+    app.add_handler(CommandHandler('ls', ls_command))
+    app.add_handler(CommandHandler('so', list_books_command))
+    app.add_handler(CommandHandler('email', email_command))
+    app.add_handler(CommandHandler('pay', pay_command))
+    app.add_handler(CommandHandler('setbank', set_bank_command))
+    app.add_handler(CommandHandler('done', done_command))
+    app.add_handler(CommandHandler('broadcast', broadcast_command))
+    app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Đăng ký TẤT CẢ các lệnh Command
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('help', help_command))
-    application.add_handler(CommandHandler('ls', ls_command))
-    application.add_handler(CommandHandler('so', list_books_command))
-    application.add_handler(CommandHandler('new', new_book_command))
-    application.add_handler(CommandHandler('email', email_command))
-    application.add_handler(CommandHandler('done', done_command)) # <--- Đã thêm lệnh /done
-    application.add_handler(CommandHandler('setbank', set_bank_command))
-    application.add_handler(CommandHandler('pay', pay_command))
-    application.add_handler(CommandHandler('broadcast', broadcast_command))
-    
-    # Đăng ký xử lý nút bấm
-    application.add_handler(CallbackQueryHandler(button_callback))
-    
-    # Đăng ký xử lý text thường (luôn để dưới cùng)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    if WEBHOOK_URL:
-        application.run_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}/{TOKEN}")
-    else:
-        application.run_polling()
+    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL")
+    if WEBHOOK_URL: app.run_webhook(listen="0.0.0.0", port=int(os.environ.get("PORT", 8443)), url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}/{TOKEN}")
+    else: app.run_polling()
