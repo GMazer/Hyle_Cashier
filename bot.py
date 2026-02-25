@@ -196,7 +196,6 @@ async def done_command(update, context):
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).post_init(setup_commands).build()
-    app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_command))
     app.add_handler(CommandHandler('ls', ls_command))
     app.add_handler(CommandHandler('so', list_books_command))
