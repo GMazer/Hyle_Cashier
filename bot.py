@@ -131,6 +131,53 @@ async def pay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e: 
         await update.message.reply_text(f"⚠️ Sổ chưa cài STK hoặc lỗi: {e}")
 
+        # --- 4. LỆNH /NEW: TỰ ĐỘNG TẠO FILE GOOGLE SHEET MỚI ---
+async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if not args:
+        await update.message.reply_text("⚠️ Hãy nhập tên sổ. VD: `/new AnSang`", parse_mode='Markdown')
+        return
+    
+    book_name = " ".join(args)
+    await update.message.reply_text(f"⏳ Đang tạo sổ **{book_name}** trên Google Drive...")
+
+    try:
+        gc = get_google_client()
+        if not gc:
+            await update.message.reply_text("❌ Lỗi kết nối Google.")
+            return
+
+        # Tạo file Sheet mới
+        sh = gc.create(book_name)
+        # Chia sẻ quyền truy cập (cho phép Bot viết vào file vừa tạo)
+        sh.share(None, perm_type='anyone', role='writer')
+        
+        ws = sh.sheet1
+        # Cấu hình tiêu đề cột
+        ws.update(range_name='A1:D1', values=[["Ngày", "Món", "Tiền", "Ghi chú"]])
+        ws.update_acell('F1', "TỔNG NỢ:")
+        ws.update_acell('G1', "=SUM(C:C)")
+        
+        # Định dạng in đậm cho tổng tiền
+        ws.format("G1", {"textFormat": {"bold": True, "foregroundColor": {"red": 1.0}}})
+
+        # Lưu vào bộ nhớ của Bot
+        if 'books' not in context.user_data: context.user_data['books'] = {}
+        context.user_data['books'][sh.id] = book_name
+        context.user_data['current_sheet_id'] = sh.id
+        context.user_data['current_book_name'] = book_name
+
+        await update.message.reply_text(
+            f"✅ **ĐÃ TẠO SỔ THÀNH CÔNG!**\n\n"
+            f"📂 Tên sổ: **{book_name}**\n"
+            f"🔗 [Bấm vào đây để xem Sheet]({sh.url})", 
+            parse_mode='Markdown', 
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        logging.error(f"Lỗi tạo sổ: {e}")
+        await update.message.reply_text("⛔ Bot bị Google chặn tạo file tự động.\n👉 Hãy tạo thủ công rồi gửi Link vào đây nhé.")
+
 # --- 4. XỬ LÝ TIN NHẮN & BROADCAST ---
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
