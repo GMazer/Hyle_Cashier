@@ -51,10 +51,17 @@ async def setup_commands(application):
     await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
     print("✅ Đã cập nhật Menu lệnh!")
 
-# --- 1. LỆNH /START ---
+# --- 1. LỆNH /START (BẢN ĐÃ FIX LẶP & MENU) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if 'all_users' not in context.bot_data: context.bot_data['all_users'] = set()
+    # Thu thập ID người dùng
+    if 'all_users' not in context.bot_data: 
+        context.bot_data['all_users'] = set()
     context.bot_data['all_users'].add(update.effective_chat.id)
+
+    # Ép hiện nút Menu ngay lập tức khi người dùng bấm Start
+    try:
+        await context.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    except: pass
 
     user_name = update.effective_user.full_name
     books = context.user_data.get('books', {})
@@ -62,20 +69,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if books:
         msg = (
-            f"👋 **Xin chào {user_name}!**\n\n📂 Sổ hiện tại: **{current_book}**\n\n"
-            "💵 **Ghi nợ nhanh:**\n   `Banh mi 20` (Hôm nay)\n   `30/1 Pho 40` (Ngày cũ)\n\n"
+            f"👋 **Xin chào {user_name}!**\n\n"
+            f"📂 Sổ hiện tại: **{current_book}**\n\n"
+            "💵 **Ghi nợ nhanh:**\n"
+            "   `Banh mi 20` (Hôm nay)\n"
+            "   `30/1 Pho 40` (Ngày cũ)\n\n"
             "⚙️ **Lệnh tắt:** /ls, /so, /pay, /help"
         )
     else:
         msg = (
             f"👋 **Chào mừng {user_name} đến với Bot Ghi Nợ Ăn Sáng!**\n\n"
-            f"1️⃣ Share quyền Editor cho: `{BOT_EMAIL}`\n2️⃣ Gửi Link Sheet vào đây để kết nối."
+            f"1️⃣ Share quyền Editor cho: `{BOT_EMAIL}`\n"
+            f"2️⃣ Gửi Link Sheet vào đây để kết nối."
         )
+    
+    # CHỈ GỬI DUY NHẤT 1 TIN NHẮN PHẢN HỒI
     await update.message.reply_text(msg, parse_mode='Markdown')
-    from telegram import MenuButtonCommands
-    await context.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    await update.message.reply_text(msg, parse_mode='Markdown')
-
+    
 # --- 2. CÁC LỆNH CƠ BẢN ---
 async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📧 Email Bot:\n`{BOT_EMAIL}`", parse_mode='Markdown')
