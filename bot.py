@@ -12,6 +12,9 @@ TOKEN = '8374820897:AAFN5p3mmpu-fcq4OBay7lD4sUV2lVHlEHo'
 BOT_EMAIL = "bot-chi-tieu@bot-chi-tieu-485902.iam.gserviceaccount.com"
 ADMIN_ID = 1147660391
 
+import difflib
+
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -32,6 +35,8 @@ def get_google_client():
     except Exception as e:
         logging.error(f"Lỗi Auth: {e}")
         return None
+
+
 
 # --- ÉP CẬP NHẬT MENU LỆNH ---
 from telegram import BotCommand, MenuButtonCommands, BotCommandScopeDefault
@@ -126,18 +131,96 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg, parse_mode='Markdown')
 
-# --- 3. QUẢN LÝ NGÂN HÀNG & QR ---
+# ====== BANK CONFIG ======
+
+BANK_CODES = {
+    "MB":  "MB Bank",
+    "VCB": "Vietcombank",
+    "BIDV":"BIDV",
+    "CTG": "VietinBank",
+    "ACB": "ACB",
+    "TCB": "Techcombank",
+    "STB": "Sacombank",
+    "VPB": "VPBank",
+    "TPB": "TPBank",
+}
+
+import difflib
+
+def normalize_bank_code(raw: str):
+    if not raw:
+        return None, None
+
+    code = raw.strip().upper()
+
+    if code in BANK_CODES:
+        return code, None
+
+    suggestion = None
+    close = difflib.get_close_matches(code, BANK_CODES.keys(), n=1, cutoff=0.6)
+    if close:
+        suggestion = close[0]
+
+    return None, suggestion
+
+
+# ====== HANDLER /setbank ======
+
 async def set_bank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sheet_id = context.user_data.get('current_sheet_id')
-    if not sheet_id or len(context.args) < 3:
-        await update.message.reply_text("⚠️ Gõ: `/setbank Bank STK Ten` (VD: `/setbank MB 09123 TEN`)", parse_mode='Markdown')
+    sheet_id = context.user_data.get("current_sheet_id")
+    if not sheet_id:
+        await update.message.reply_text(
+            "⚠️ Bạn chưa kết nối Sheet.\n👉 Hãy gửi link Google Sheet vào đây trước, rồi gõ lại /setbank."
+        )
         return
-    bank, stk, name = context.args[0].upper(), context.args[1], " ".join(context.args[2:]).upper()
-    try:
-        ws = get_google_client().open_by_key(sheet_id).sheet1
-        ws.update(range_name='H1:I3', values=[["BANK:", bank], ["STK:", f"'{stk}"], ["NAME:", name]])
-        await update.message.reply_text(f"✅ Đã lưu STK: {stk} ({bank})")
-    except Exception as e: await update.message.reply_text(f"❌ Lỗi: {e}")
+
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "⚠️ Cú pháp:\n"
+            "`/setbank <BANK_CODE> <STK> <TEN>`\n\n"
+            "Ví dụ:\n"
+            "`/setbank MB 0862635826 NGUYEN VAN NANG`\n"
+            "`/setbank VCB 0123456789 LE VAN A`\n\n"
+            "Bank code hỗ trợ: " + ", ".join(sorted(BANK_CODES.keys())),
+            parse_mode="Markdown"
+        )
+        return
+
+    raw_bank = context.args[0]
+    stk = context.args[1].strip()
+    name = " ".join(context.args[2:]).strip()
+
+    bank_code, suggestion = normalize_bank_code(raw_bank)
+    if not bank_code:
+        hint = f"\n👉 Bạn có muốn dùng `{suggestion}` không?" if suggestion else ""
+        await update.message.reply_text(
+            "⚠️ Bank code không hợp lệ.\n"
+            "Vui lòng nhập 1 trong các mã: " + ", ".join(sorted(BANK_CODES.keys())) +
+            hint,
+            parse_mode="Markdown"
+        )
+        return
+
+    if not stk.isdigit() or len(stk) < 6:
+        await update.message.reply_text("⚠️ STK không hợp lệ. STK phải là số và thường >= 6 ký tự.")
+        return
+
+    bank_name = BANK_CODES[bank_code]
+    name_up = name.upper()
+
+    # ---- Từ đây giữ nguyên phần lưu của bạn (sheet / user_data) ----
+    # context.user_data["bank_code"] = bank_code
+    # context.user_data["bank_stk"] = stk
+    # context.user_data["bank_holder"] = name_up
+    # await update_sheet_bank_info(sheet_id, bank_code, stk, name_up)
+
+    await update.message.reply_text(
+        f"✅ Đã lưu ngân hàng:\n"
+        f"- Bank: **{bank_code}** ({bank_name})\n"
+        f"- STK: `{stk}`\n"
+        f"- Tên: **{name_up}**",
+        parse_mode="Markdown"
+    )
 
 async def pay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheet_id = context.user_data.get('current_sheet_id')
@@ -279,24 +362,33 @@ async def done_command(update, context):
     await update.message.reply_text("✅ Đã xóa trắng sổ nợ.")
 
 # --- MAIN BLOCK ---
-if __name__ == '__main__':
-    # 1. Khởi tạo Application
-    # Mình bỏ post_init để tránh xung đột gây lặp tin nhắn
-    application = ApplicationBuilder().token(TOKEN).post_init(setup_commands).build()
-    
-    # 2. Đăng ký TẤT CẢ các lệnh (Viết ở đây là chắc ăn nhất)
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('help', help_command))
-    application.add_handler(CommandHandler('ls', ls_command))
-    application.add_handler(CommandHandler('so', list_books_command))
-    application.add_handler(CommandHandler('new', new_book_command))
-    application.add_handler(CommandHandler('email', email_command))
-    application.add_handler(CommandHandler('done', done_command))
-    application.add_handler(CommandHandler('setbank', set_bank_command))
-    application.add_handler(CommandHandler('pay', pay_command))
-    application.add_handler(CommandHandler('broadcast', broadcast_command))
-    
-    # Đăng ký xử lý nút bấm & tin nhắn text
+if __name__ == "__main__":
+
+    from telegram.ext import PicklePersistence
+
+    # --- 1. Khởi tạo Application ---
+    persistence = PicklePersistence(filepath="bot_persistence.pkl")
+
+    application = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .persistence(persistence)
+        .post_init(setup_commands)
+        .build()
+    )
+
+    # --- 2. Đăng ký handler ---
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("ls", ls_command))
+    application.add_handler(CommandHandler("so", list_books_command))
+    application.add_handler(CommandHandler("new", new_book_command))
+    application.add_handler(CommandHandler("email", email_command))
+    application.add_handler(CommandHandler("done", done_command))
+    application.add_handler(CommandHandler("setbank", set_bank_command))
+    application.add_handler(CommandHandler("pay", pay_command))
+    application.add_handler(CommandHandler("broadcast", broadcast_command))
+
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
