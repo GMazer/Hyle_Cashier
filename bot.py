@@ -34,34 +34,35 @@ def get_google_client():
         return None
 
 # --- ÉP CẬP NHẬT MENU LỆNH ---
+from telegram import BotCommand, MenuButtonCommands, BotCommandScopeDefault
 async def setup_commands(application):
     commands = [
         BotCommand("start", "Bắt đầu / Hướng dẫn kết nối"),
         BotCommand("help", "Xem cách ghi nợ & lệnh tắt"),
         BotCommand("ls", "Xem 10 khoản chi gần nhất"),
-        BotCommand("so", "Menu chọn/đổi sổ nợ"),
+        BotCommand("so", "Menu chọn/đổi số nợ"),
         BotCommand("pay", "Tạo mã QR thanh toán"),
         BotCommand("setbank", "Cài ngân hàng (VD: /setbank MB 123 TÊN)"),
         BotCommand("email", "Lấy Email Bot để cấp quyền"),
         BotCommand("new", "Tạo sổ mới"),
-        BotCommand("done", "Chốt sổ (Xóa dữ liệu cũ)")
+        BotCommand("done", "Chốt sổ (Xóa dữ liệu cũ)"),
     ]
-    await application.bot.delete_my_commands()
-    await application.bot.set_my_commands(commands)
-    await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    print("✅ Đã cập nhật Menu lệnh!")
 
+    try:
+        await application.bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+        await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        print("✅ Đã cập nhật Menu lệnh")
+    except Exception as e:
+        print("❌ setup_commands error:", e)
 # --- 1. LỆNH /START (BẢN ĐÃ FIX LẶP & MENU) ---
+from telegram import BotCommand, MenuButtonCommands, BotCommandScopeChat
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     # Thu thập ID người dùng
-    if 'all_users' not in context.bot_data: 
+    if 'all_users' not in context.bot_data:
         context.bot_data['all_users'] = set()
     context.bot_data['all_users'].add(update.effective_chat.id)
-
-    # Ép hiện nút Menu ngay lập tức khi người dùng bấm Start
-    try:
-        await context.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    except: pass
 
     user_name = update.effective_user.full_name
     books = context.user_data.get('books', {})
@@ -82,9 +83,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"1️⃣ Share quyền Editor cho: `{BOT_EMAIL}`\n"
             f"2️⃣ Gửi Link Sheet vào đây để kết nối."
         )
-    
-    # CHỈ GỬI DUY NHẤT 1 TIN NHẮN PHẢN HỒI
-    await update.message.reply_text(msg, parse_mode='Markdown')
+
+    chat_id = update.effective_chat.id
+
+    # --- Set commands cho đúng chat này (đảm bảo Menu hiện) ---
+    commands = [
+        BotCommand("start", "Bắt đầu / Hướng dẫn kết nối"),
+        BotCommand("help", "Xem cách ghi nợ & lệnh tắt"),
+        BotCommand("ls", "Xem 10 khoản chi gần nhất"),
+        BotCommand("so", "Menu chọn/đổi số nợ"),
+        BotCommand("pay", "Tạo mã QR thanh toán"),
+        BotCommand("setbank", "Cài ngân hàng"),
+        BotCommand("email", "Lấy Email Bot để cấp quyền"),
+        BotCommand("new", "Tạo sổ mới"),
+        BotCommand("done", "Chốt sổ"),
+    ]
+
+    await context.bot.set_my_commands(
+        commands,
+        scope=BotCommandScopeChat(chat_id)
+    )
+
+    # --- Bật nút Menu ---
+    await context.bot.set_chat_menu_button(
+        chat_id=chat_id,
+        menu_button=MenuButtonCommands()
+    )
+
+    # --- Gửi đúng nội dung chào mừng ---
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 # --- 2. CÁC LỆNH CƠ BẢN ---
 async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
