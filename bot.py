@@ -85,7 +85,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # CHỈ GỬI DUY NHẤT 1 TIN NHẮN PHẢN HỒI
     await update.message.reply_text(msg, parse_mode='Markdown')
-    
+
 # --- 2. CÁC LỆNH CƠ BẢN ---
 async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📧 Email Bot:\n`{BOT_EMAIL}`", parse_mode='Markdown')
@@ -255,7 +255,7 @@ async def done_command(update, context):
 if __name__ == '__main__':
     # 1. Khởi tạo Application
     # Mình bỏ post_init để tránh xung đột gây lặp tin nhắn
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = ApplicationBuilder().token(TOKEN).post_init(setup_commands).build()
     
     # 2. Đăng ký TẤT CẢ các lệnh (Viết ở đây là chắc ăn nhất)
     application.add_handler(CommandHandler('start', start))
@@ -280,7 +280,7 @@ if __name__ == '__main__':
     if WEBHOOK_URL:
         # Khi chạy Webhook, ta gọi setup_commands thủ công một lần để ép hiện Menu
         import asyncio
-        asyncio.get_event_loop().run_until_complete(setup_commands(application))
+
         
         application.run_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}/{TOKEN}")
     else:
