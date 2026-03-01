@@ -21,8 +21,8 @@ async def db_init():
     )
 
     async def db_upsert_user_sheet(user_id: int, chat_id: int, sheet_url: str, sheet_id: str):
-    if DB_POOL is None:
-        return
+        if DB_POOL is None:
+            return
 
     query = """
     INSERT INTO user_sheets (user_id, chat_id, sheet_url, sheet_id, updated_at)
