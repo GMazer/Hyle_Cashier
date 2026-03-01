@@ -74,7 +74,60 @@ async def setup_commands(application):
 # --- 1. LỆNH /START (BẢN ĐÃ FIX LẶP & MENU) ---
 from telegram import BotCommand, MenuButtonCommands, BotCommandScopeChat
 
+# --- 1. LỆNH /START (ĐÃ CẬP NHẬT THEO YÊU CẦU) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ✅ Auto-restore từ DB nếu mất session sau restart
+    if not context.user_data.get("current_sheet_id"):
+        # Lưu ý: Đảm bảo bạn đã định nghĩa hàm db_get_user_sheet trong code của mình
+        try:
+            row = await db_get_user_sheet(update.effective_user.id)
+            if row:
+                context.user_data["current_sheet_id"] = row["sheet_id"]
+                context.user_data["current_sheet_url"] = row["sheet_url"]
+                context.user_data["books"] = {row["sheet_id"]: "Sổ đã kết nối"}
+                context.user_data["current_book_name"] = "Sổ đã kết nối"
+        except NameError:
+            logging.error("Hàm db_get_user_sheet chưa được định nghĩa.")
+
+    # Thu thập ID người dùng cho tính năng broadcast
+    if 'all_users' not in context.bot_data:
+        context.bot_data['all_users'] = set()
+    context.bot_data['all_users'].add(update.effective_chat.id)
+
+    # NỘI DUNG CHÀO MỪNG THEO YÊU CẦU CỦA BẠN
+    welcome_msg = (
+        "👋 Chào mừng bạn tới với bot quản li dòng tiền thông minh của Hyle,\n"
+        "nhấn /help để set up bot"
+    )
+
+    chat_id = update.effective_chat.id
+
+    # Cập nhật Menu lệnh cho người dùng
+    commands = [
+        BotCommand("start", "Bắt đầu"),
+        BotCommand("help", "Hướng dẫn setup & sử dụng"),
+        BotCommand("ls", "Xem 10 khoản chi gần nhất"),
+        BotCommand("so", "Menu chọn/đổi số nợ"),
+        BotCommand("pay", "Tạo mã QR thanh toán"),
+        BotCommand("setbank", "Cài ngân hàng"),
+        BotCommand("email", "Lấy Email Bot"),
+        BotCommand("new", "Tạo sổ mới"),
+        BotCommand("done", "Chốt sổ"),
+    ]
+
+    await context.bot.set_my_commands(
+        commands,
+        scope=BotCommandScopeChat(chat_id)
+    )
+
+    # Bật nút Menu (nút có 3 gạch ngang cạnh ô nhập tin nhắn)
+    await context.bot.set_chat_menu_button(
+        chat_id=chat_id,
+        menu_button=MenuButtonCommands()
+    )
+
+    # Gửi tin nhắn chào mừng
+    await update.message.reply_text(welcome_msg)
 
     # ✅ Auto-restore từ DB nếu mất session sau restart
     if not context.user_data.get("current_sheet_id"):
@@ -148,6 +201,40 @@ async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 from telegram.constants import ParseMode
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 1. Tin nhắn dẫn nhập
+    await update.message.reply_text(
+        "📌 **HƯỚNG DẪN SETUP BOT**\n\n"
+        "Để bắt đầu sử dụng, bạn vui lòng thực hiện theo 2 bước sau:",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    # 2. Bước 1: Copy Email (Tin nhắn này tách riêng để dễ copy)
+    await update.message.reply_text(
+        "✅ **Bước 1:** Ấn vào email bên dưới để copy, sau đó mở Google Sheet của bạn và **Share quyền Editor** cho email này:"
+    )
+    
+    # Tin nhắn chứa email riêng biệt, dùng format code để tap-to-copy
+    await update.message.reply_text(
+        f"`{BOT_EMAIL}`", 
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    # 3. Bước 2: Gửi Link
+    await update.message.reply_text(
+        "✅ **Bước 2:** Sau khi share quyền, hãy **Gửi link Google Sheet** vào đây để bot kết nối.\n\n"
+        "Ví dụ link:\n"
+        "`https://docs.google.com/spreadsheets/d/...`"
+    )
+
+    # 4. Hướng dẫn sử dụng nhanh
+    msg_usage = (
+        "📖 **CÁCH SỬ DỤNG NHANH**\n\n"
+        "💵 **Ghi nợ:** `Tên_món Tiền` (VD: `Pho 40`)\n"
+        "🏦 **Cài ngân hàng:** `/setbank MB 123 TEN`\n"
+        "💳 **Tạo mã QR:** `/pay`\n"
+        "📂 **Đổi sổ:** `/so` | **Xóa nợ:** `/done`"
+    )
+    await update.message.reply_text(msg_usage, parse_mode=ParseMode.MARKDOWN)
     # 1) Tổng quan + nút copy nhanh lệnh
     await update.message.reply_text(
         "📌 **HƯỚNG DẪN NHANH — Bot Ghi Nợ Ăn Sáng**\n\n"
