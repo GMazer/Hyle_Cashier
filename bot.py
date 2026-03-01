@@ -412,19 +412,14 @@ async def set_bank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(context.args) < 3:
         await update.message.reply_text(
-    "💵 **Ghi nợ nhanh (có hỗ trợ ghi chú)**\n\n"
-    "Cú pháp:\n"
-    "`Tên_món Số_tiền Ghi_chú`\n\n"
-    "Ví dụ:\n"
-    "`Cafe 25 vì nay quá no`\n"
-    "`Trà sữa 45 ít đá`\n"
-    "`Bánh mì 20`\n\n"
-    "👉 Bot sẽ hiểu:\n"
-    "- Phần trước số tiền = Tên món\n"
-    "- Số đầu tiên trong câu = Tiền (nghìn)\n"
-    "- Phần sau số tiền = Ghi chú (nếu có)",
-    parse_mode=ParseMode.MARKDOWN
-)
+            "⚠️ Cú pháp:\n"
+            "`/setbank <BANK_CODE> <STK> <TEN>`\n\n"
+            "Ví dụ:\n"
+            "`/setbank MB 0862635826 NGUYEN VAN NANG`\n"
+            "`/setbank VCB 0123456789 LE VAN A`\n\n"
+            "Bank code hỗ trợ: " + ", ".join(sorted(BANK_CODES.keys())),
+            parse_mode="Markdown"
+        )
         return
 
     raw_bank = context.args[0]
@@ -581,7 +576,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
- # Ghi nợ
+    # Ghi nợ
     sid = context.user_data.get('current_sheet_id')
     if not sid:
         return
@@ -593,23 +588,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         raw = text.strip()
 
         # Tìm số tiền đầu tiên trong câu
-        match = re.search(r"\d+(\.\d+)?", raw)
-        if not match:
+        m = re.search(r"\d+(\.\d+)?", raw)
+        if not m:
             return
 
-        amount_str = match.group()
-        amount = float(amount_str) * 1000
+        amount = float(m.group()) * 1000
+        start, end = m.span()
 
-        start, end = match.span()
         item = raw[:start].strip()
         note = raw[end:].strip()
 
-        ws.append_row([
+        # ✅ tìm dòng trống tiếp theo ở cột A (để không bị lệch vùng bảng F:I)
+        next_row = len(ws.col_values(1)) + 1  # cột A
+
+        # ✅ ghi thẳng vào A:D của next_row
+        ws.update(f"A{next_row}:D{next_row}", [[
             datetime.now().strftime("%d/%m/%Y"),
             item,
             amount,
             note
-        ])
+        ]])
 
         await update.message.reply_text(
             f"✅ Ghi: {item} ({amount:,.0f})\n"
