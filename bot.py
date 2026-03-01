@@ -11,6 +11,18 @@ import re
 
 DB_POOL = None
 
+async def require_sheet(update, context):
+    sid = await require_sheet(update, context)
+    if not sid:
+        return
+        await update.message.reply_text(
+            "⚠️ Bạn chưa kết nối sổ.\n\n"
+            "👉 Hãy gửi link Google Sheet vào đây trước.\n"
+            "Hoặc dùng /new để tạo sổ mới."
+        )
+        return None
+    return sid
+
 async def db_init():
     global DB_POOL
     DB_POOL = await asyncpg.create_pool(
@@ -38,6 +50,8 @@ async def db_upsert_user_sheet(telegram_user_id: int, telegram_chat_id: int, she
     async with DB_POOL.acquire() as conn:
         await conn.execute(query, telegram_user_id, telegram_chat_id, sheet_url, sheet_id)
 
+
+
 async def db_get_user_sheet(telegram_user_id: int):
     if DB_POOL is None:
         return None
@@ -63,6 +77,31 @@ async def db_get_user_sheet(telegram_user_id: int):
     async with DB_POOL.acquire() as conn:
         row = await conn.fetchrow(query, user_id)
         return dict(row) if row else None
+    
+    async def db_touch_user(telegram_user_id: int, telegram_chat_id: int):
+        if DB_POOL is None:
+            return
+
+        q = """
+        INSERT INTO bot_users (telegram_user_id, telegram_chat_id, first_seen, last_seen)
+        VALUES ($1, $2, NOW(), NOW())
+        ON CONFLICT (telegram_user_id)
+        DO UPDATE SET
+            telegram_chat_id = EXCLUDED.telegram_chat_id,
+            last_seen = NOW();
+        """
+        async with DB_POOL.acquire() as conn:
+            await conn.execute(q, telegram_user_id, telegram_chat_id)
+
+
+async def db_get_all_chat_ids():
+    if DB_POOL is None:
+        return []
+
+    q = "SELECT telegram_chat_id FROM bot_users;"
+    async with DB_POOL.acquire() as conn:
+        rows = await conn.fetch(q)
+        return [r["telegram_chat_id"] for r in rows]
 
 # --- CẤU HÌNH ---
 TOKEN = os.environ["BOT_TOKEN"]
@@ -121,6 +160,7 @@ from telegram import BotCommand, MenuButtonCommands, BotCommandScopeChat
 
 # --- 1. LỆNH /START (ĐÃ CẬP NHẬT THEO YÊU CẦU) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await db_touch_user(update.effective_user.id, update.effective_chat.id)
     # ✅ Auto-restore từ DB nếu mất session sau restart
     if not context.user_data.get("current_sheet_id"):
         # Lưu ý: Đảm bảo bạn đã định nghĩa hàm db_get_user_sheet trong code của mình
@@ -134,10 +174,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except NameError:
             logging.error("Hàm db_get_user_sheet chưa được định nghĩa.")
 
-    # Thu thập ID người dùng cho tính năng broadcast
-    if 'all_users' not in context.bot_data:
-        context.bot_data['all_users'] = set()
-    context.bot_data['all_users'].add(update.effective_chat.id)
 
     # NỘI DUNG CHÀO MỪNG THEO YÊU CẦU CỦA BẠN
     welcome_msg = (
@@ -186,9 +222,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["current_book_name"] = "Sổ đã kết nối"
 
     # Thu thập ID người dùng
-    if 'all_users' not in context.bot_data:
-        context.bot_data['all_users'] = set()
-    context.bot_data['all_users'].add(update.effective_chat.id)
 
     user_name = update.effective_user.full_name
     books = context.user_data.get('books', {})
@@ -531,20 +564,34 @@ async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- 4. XỬ LÝ TIN NHẮN & BROADCAST ---
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return
+    if update.effective_user.id != ADMIN_ID:
+        return
+
     msg = update.message.text.replace('/broadcast', '').strip()
-    users = context.bot_data.get('all_users', set())
+    if not msg:
+        return await update.message.reply_text("⚠️ Cú pháp: /broadcast <nội dung>")
+
+    users = await db_get_all_chat_ids()
+
+    ok = 0
+    fail = 0
+
     for uid in users:
-        try: await context.bot.send_message(chat_id=uid, text=f"📢 **THÔNG BÁO:**\n\n{msg}", parse_mode='Markdown')
-        except: pass
-    await update.message.reply_text("✅ Đã gửi xong.")
+        try:
+            await context.bot.send_message(
+                chat_id=uid,
+                text=f"📢 **THÔNG BÁO:**\n\n{msg}",
+                parse_mode='Markdown'
+            )
+            ok += 1
+
+        except:
+            fail += 1
+
+    await update.message.reply_text(f"✅ Đã gửi xong. OK={ok}, Fail={fail}")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if 'all_users' not in context.bot_data:
-        context.bot_data['all_users'] = set()
-
-    context.bot_data['all_users'].add(update.effective_chat.id)
+    await db_touch_user(update.effective_user.id, update.effective_chat.id)
 
     text = update.message.text.strip()
 
@@ -577,7 +624,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Ghi nợ
-    sid = context.user_data.get('current_sheet_id')
+    sid = await require_sheet(update, context)
     if not sid:
         return
 
@@ -632,7 +679,7 @@ async def button_callback(update, context):
     await query.edit_message_text(f"✅ Đã chọn sổ mới.")
 
 async def ls_command(update, context):
-    sid = context.user_data.get('current_sheet_id')
+    sid = await require_sheet(update, context)
     if not sid:
         return
 
@@ -685,7 +732,12 @@ if __name__ == "__main__":
     from telegram.ext import PicklePersistence
 
     # --- 1. Khởi tạo Application ---
-    persistence = PicklePersistence(filepath="bot_persistence.pkl")
+    persistence = PicklePersistence(
+    filepath="bot_persistence.pkl",
+    store_user_data=True,
+    store_chat_data=True,
+    store_bot_data=True   # 🔥 cái này quan trọng
+)
 
     application = (
         ApplicationBuilder()
