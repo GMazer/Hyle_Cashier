@@ -20,7 +20,7 @@ async def db_init():
     )
 
 # --- CẤU HÌNH ---
-TOKEN = '8374820897:AAFN5p3mmpu-fcq4OBay7lD4sUV2lVHlEHo'
+TOKEN = os.environ["BOT_TOKEN"]
 BOT_EMAIL = "bot-chi-tieu@bot-chi-tieu-485902.iam.gserviceaccount.com"
 ADMIN_ID = 1147660391
 
