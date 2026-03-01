@@ -20,6 +20,39 @@ async def db_init():
         command_timeout=30,
     )
 
+    async def db_upsert_user_sheet(user_id: int, chat_id: int, sheet_url: str, sheet_id: str):
+    if DB_POOL is None:
+        return
+
+    query = """
+    INSERT INTO user_sheets (user_id, chat_id, sheet_url, sheet_id, updated_at)
+    VALUES ($1, $2, $3, $4, NOW())
+    ON CONFLICT (user_id)
+    DO UPDATE SET
+        chat_id = EXCLUDED.chat_id,
+        sheet_url = EXCLUDED.sheet_url,
+        sheet_id = EXCLUDED.sheet_id,
+        updated_at = NOW();
+    """
+
+    async with DB_POOL.acquire() as conn:
+        await conn.execute(query, user_id, chat_id, sheet_url, sheet_id)
+
+
+async def db_get_user_sheet(user_id: int):
+    if DB_POOL is None:
+        return None
+
+    query = """
+    SELECT sheet_id, sheet_url
+    FROM user_sheets
+    WHERE user_id = $1;
+    """
+
+    async with DB_POOL.acquire() as conn:
+        row = await conn.fetchrow(query, user_id)
+        return dict(row) if row else None
+
 # --- CẤU HÌNH ---
 TOKEN = os.environ["BOT_TOKEN"]
 BOT_EMAIL = "bot-chi-tieu@bot-chi-tieu-485902.iam.gserviceaccount.com"
@@ -608,6 +641,7 @@ if __name__ == "__main__":
     async def post_init(application):
         await db_init()              # kết nối Postgres
         await setup_commands(application)  # set menu
+        
 
 
     from telegram.ext import PicklePersistence
