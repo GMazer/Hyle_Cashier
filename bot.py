@@ -734,9 +734,7 @@ if __name__ == "__main__":
     # --- 1. Khởi tạo Application ---
     persistence = PicklePersistence(
     filepath="bot_persistence.pkl",
-    store_user_data=True,
-    store_chat_data=True,
-    store_bot_data=True   # 🔥 cái này quan trọng
+
 )
 
     application = (
