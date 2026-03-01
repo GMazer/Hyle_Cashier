@@ -11,17 +11,31 @@ import re
 
 DB_POOL = None
 
-async def require_sheet(update, context):
-    sid = await require_sheet(update, context)
-    if not sid:
-        return
-        await update.message.reply_text(
-            "⚠️ Bạn chưa kết nối sổ.\n\n"
-            "👉 Hãy gửi link Google Sheet vào đây trước.\n"
-            "Hoặc dùng /new để tạo sổ mới."
-        )
-        return None
-    return sid
+async def require_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 1) ưu tiên lấy từ session
+    sid = context.user_data.get("current_sheet_id")
+    if sid:
+        return sid
+
+    # 2) thử khôi phục từ DB (nếu có)
+    try:
+        row = await db_get_user_sheet(update.effective_user.id)
+        if row:
+            context.user_data["current_sheet_id"] = row["sheet_id"]
+            context.user_data["current_sheet_url"] = row["sheet_url"]
+            context.user_data["books"] = {row["sheet_id"]: "Sổ đã kết nối"}
+            context.user_data["current_book_name"] = "Sổ đã kết nối"
+            return row["sheet_id"]
+    except Exception as e:
+        logging.error(f"require_sheet restore error: {e}")
+
+    # 3) không có sheet thì báo người dùng
+    await update.message.reply_text(
+        "⚠️ Bạn chưa kết nối sổ.\n\n"
+        "👉 Hãy gửi link Google Sheet vào đây trước.\n"
+        "Hoặc dùng /new để tạo sổ mới."
+    )
+    return None
 
 async def db_init():
     global DB_POOL
@@ -78,21 +92,20 @@ async def db_get_user_sheet(telegram_user_id: int):
         row = await conn.fetchrow(query, user_id)
         return dict(row) if row else None
     
-    async def db_touch_user(telegram_user_id: int, telegram_chat_id: int):
-        if DB_POOL is None:
-            return
+async def db_touch_user(telegram_user_id: int, telegram_chat_id: int):
+    if DB_POOL is None:
+        return
 
-        q = """
-        INSERT INTO bot_users (telegram_user_id, telegram_chat_id, first_seen, last_seen)
-        VALUES ($1, $2, NOW(), NOW())
-        ON CONFLICT (telegram_user_id)
-        DO UPDATE SET
-            telegram_chat_id = EXCLUDED.telegram_chat_id,
-            last_seen = NOW();
-        """
-        async with DB_POOL.acquire() as conn:
-            await conn.execute(q, telegram_user_id, telegram_chat_id)
-
+    q = """
+    INSERT INTO bot_users (telegram_user_id, telegram_chat_id, first_seen, last_seen)
+    VALUES ($1, $2, NOW(), NOW())
+    ON CONFLICT (telegram_user_id)
+    DO UPDATE SET
+        telegram_chat_id = EXCLUDED.telegram_chat_id,
+        last_seen = NOW();
+    """
+    async with DB_POOL.acquire() as conn:
+        await conn.execute(q, telegram_user_id, telegram_chat_id)
 
 async def db_get_all_chat_ids():
     if DB_POOL is None:
