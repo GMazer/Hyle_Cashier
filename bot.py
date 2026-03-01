@@ -633,9 +633,38 @@ async def button_callback(update, context):
 
 async def ls_command(update, context):
     sid = context.user_data.get('current_sheet_id')
+    if not sid:
+        return
+
     ws = get_google_client().open_by_key(sid).sheet1
-    last_5 = ws.get_all_values()[-5:]
-    msg = "\n".join([f"{r[0]} | {r[1]}: {r[2]}" for r in last_5])
+
+    # Lấy dữ liệu đúng vùng A:D (Ngày, Món, Tiền, Ghi chú)
+    rows = ws.get("A:D")
+
+    # Bỏ header nếu có
+    if rows and rows[0] and rows[0][0].strip().lower() == "ngày":
+        rows = rows[1:]
+
+    # Lọc dòng có tiền (cột C) và lấy 5 dòng cuối
+    data_rows = [r for r in rows if len(r) >= 3 and str(r[2]).strip() != ""]
+    last_5 = data_rows[-5:]
+
+    def safe_get(r, i):
+        return r[i].strip() if len(r) > i and r[i] is not None else ""
+
+    lines = []
+    for r in last_5:
+        day = safe_get(r, 0)
+        item = safe_get(r, 1)
+        money = safe_get(r, 2)
+        note = safe_get(r, 3)
+
+        if note:
+            lines.append(f"{day} | {item}: {money} | 📝 {note}")
+        else:
+            lines.append(f"{day} | {item}: {money}")
+
+    msg = "\n".join(lines) if lines else "Chưa có dữ liệu."
     await update.message.reply_text(f"🧾 5 dòng gần nhất:\n{msg}\n💰 TỔNG: {ws.acell('G1').value}")
 
 async def done_command(update, context):
