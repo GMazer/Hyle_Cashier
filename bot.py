@@ -122,7 +122,88 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📧 Email Bot:\n`{BOT_EMAIL}`", parse_mode='Markdown')
 
+from telegram.constants import ParseMode
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 1) Tổng quan + nút copy nhanh lệnh
+    await update.message.reply_text(
+        "📌 **HƯỚNG DẪN NHANH — Bot Ghi Nợ Ăn Sáng**\n\n"
+        "Chạm vào từng khối bên dưới để copy nhanh trên điện thoại.\n"
+        "Nếu mới dùng lần đầu: làm theo **Bước 1 → Bước 2** là xong.",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    # 2) Kết nối Google Sheet
+    await update.message.reply_text(
+        "✅ **Bước 1 — Kết nối Google Sheet**\n\n"
+        "1) Mở file Google Sheet của bạn\n"
+        "2) **Share** quyền **Editor** cho email bot:\n"
+        f"`{BOT_EMAIL}`\n\n"
+        "3) Gửi **link Sheet** vào chat này (dán thẳng link).\n\n"
+        "Ví dụ link thường giống dạng:\n"
+        "`https://docs.google.com/spreadsheets/d/...`",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    # 3) Ghi nợ nhanh (message format)
+    await update.message.reply_text(
+        "💵 **Ghi nợ nhanh (gõ như chat bình thường)**\n\n"
+        "• Hôm nay:\n"
+        "`Banh mi 20`\n"
+        "`Pho 40`\n\n"
+        "• Ngày cũ (dd/mm):\n"
+        "`30/01 Pho 40`\n"
+        "`28/02 Tra sua 35`\n\n"
+        "Mẹo: bạn có thể viết tên món có dấu/không dấu đều được.",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    # 4) Lệnh quản lý sổ
+    await update.message.reply_text(
+        "📂 **Quản lý sổ (Books)**\n\n"
+        "• Xem danh sách sổ / đổi sổ:\n"
+        "`/so`\n\n"
+        "• Tạo sổ mới:\n"
+        "`/new`\n\n"
+        "• Xem 10 khoản gần nhất:\n"
+        "`/ls`",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    # 5) Cài ngân hàng + tạo QR thanh toán
+    await update.message.reply_text(
+        "🏦 **Cài ngân hàng & tạo QR**\n\n"
+        "• Cài ngân hàng (BANK_CODE dạng chữ):\n"
+        "`/setbank MB 0862635826 NGUYEN VAN NANG`\n"
+        "`/setbank VCB 0123456789 LE VAN A`\n\n"
+        "• Tạo QR thanh toán:\n"
+        "`/pay`\n\n"
+        "Nếu bạn quên bank code, bot sẽ gợi ý khi nhập sai.",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    # 6) Email bot + Chốt sổ
+    await update.message.reply_text(
+        "🧾 **Khác**\n\n"
+        "• Lấy email bot (để share quyền):\n"
+        "`/email`\n\n"
+        "• Chốt sổ (xoá dữ liệu cũ / reset theo logic của bạn):\n"
+        "`/done`\n\n"
+        "• Bắt đầu lại:\n"
+        "`/start`",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    # 7) Link riêng cho mobile copy nhanh (tuỳ chọn)
+    # Nếu bạn có 1 trang hướng dẫn (Notion/GDoc), điền vào đây
+    # (Không có thì xoá block này cũng được)
+    GUIDE_LINK = None  # ví dụ: "https://your-site.com/guide"
+    if GUIDE_LINK:
+        await update.message.reply_text(
+            "🔗 **Link hướng dẫn (mở trên mobile dễ copy):**\n"
+            f"{GUIDE_LINK}",
+            disable_web_page_preview=True
+        )
     msg = (
         "📚 **HƯỚNG DẪN**\n\n"
         "✏️ **Ghi nợ:** `MonAn Tien` (VD: `Xoi 15`)\n"
@@ -208,11 +289,6 @@ async def set_bank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank_name = BANK_CODES[bank_code]
     name_up = name.upper()
 
-    # ---- Từ đây giữ nguyên phần lưu của bạn (sheet / user_data) ----
-    # context.user_data["bank_code"] = bank_code
-    # context.user_data["bank_stk"] = stk
-    # context.user_data["bank_holder"] = name_up
-    # await update_sheet_bank_info(sheet_id, bank_code, stk, name_up)
 
     await update.message.reply_text(
         f"✅ Đã lưu ngân hàng:\n"
