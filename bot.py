@@ -75,11 +75,17 @@ async def setup_commands(application):
 from telegram import BotCommand, MenuButtonCommands, BotCommandScopeChat
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # ✅ Auto-restore từ DB nếu mất session sau restart
     if not context.user_data.get("current_sheet_id"):
         row = await db_get_user_sheet(update.effective_user.id)
-    if row:
-        context.user_data["current_sheet_id"] = row["sheet_id"]
-        context.user_data["current_sheet_url"] = row["sheet_url"]
+        if row:
+            context.user_data["current_sheet_id"] = row["sheet_id"]
+            context.user_data["current_sheet_url"] = row["sheet_url"]
+
+            # 🔥 khôi phục books + tên sổ để UI đúng nhánh
+            context.user_data["books"] = {row["sheet_id"]: "Sổ đã kết nối"}
+            context.user_data["current_book_name"] = "Sổ đã kết nối"
 
     # Thu thập ID người dùng
     if 'all_users' not in context.bot_data:
