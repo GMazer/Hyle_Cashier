@@ -7,6 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotComm
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from oauth2client.service_account import ServiceAccountCredentials
 import asyncpg
+import re
 
 DB_POOL = None
 
@@ -367,14 +368,19 @@ async def set_bank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(context.args) < 3:
         await update.message.reply_text(
-            "⚠️ Cú pháp:\n"
-            "`/setbank <BANK_CODE> <STK> <TEN>`\n\n"
-            "Ví dụ:\n"
-            "`/setbank MB 0862635826 NGUYEN VAN NANG`\n"
-            "`/setbank VCB 0123456789 LE VAN A`\n\n"
-            "Bank code hỗ trợ: " + ", ".join(sorted(BANK_CODES.keys())),
-            parse_mode="Markdown"
-        )
+    "💵 **Ghi nợ nhanh (có hỗ trợ ghi chú)**\n\n"
+    "Cú pháp:\n"
+    "`Tên_món Số_tiền Ghi_chú`\n\n"
+    "Ví dụ:\n"
+    "`Cafe 25 vì nay quá no`\n"
+    "`Trà sữa 45 ít đá`\n"
+    "`Bánh mì 20`\n\n"
+    "👉 Bot sẽ hiểu:\n"
+    "- Phần trước số tiền = Tên món\n"
+    "- Số đầu tiên trong câu = Tiền (nghìn)\n"
+    "- Phần sau số tiền = Ghi chú (nếu có)",
+    parse_mode=ParseMode.MARKDOWN
+)
         return
 
     raw_bank = context.args[0]
@@ -526,23 +532,49 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Đã kết nối sổ: {sh.title}")
 
         except Exception as e:
-            print("Sheet error:", e)
-            await update.message.reply_text("❌ Lỗi quyền truy cập!")
+            print("Sheet error:", repr(e))
+            await update.message.reply_text(f"❌ Sheet error: {e}")
 
         return
 
-    # Ghi nợ
+ # Ghi nợ
     sid = context.user_data.get('current_sheet_id')
-    if not sid: return
+    if not sid:
+        return
+
     try:
         ws = get_google_client().open_by_key(sid).sheet1
-        parts = text.split()
-        if len(parts) < 2: return
-        amt = float(parts[-1]) * 1000
-        item = " ".join(parts[:-1])
-        ws.append_row([datetime.now().strftime("%d/%m/%Y"), item, amt])
-        await update.message.reply_text(f"✅ Ghi: {item} ({amt:,.0f})\n💰 Tổng: {ws.acell('G1').value}")
-    except: pass
+
+        import re
+        raw = text.strip()
+
+        # Tìm số tiền đầu tiên trong câu
+        match = re.search(r"\d+(\.\d+)?", raw)
+        if not match:
+            return
+
+        amount_str = match.group()
+        amount = float(amount_str) * 1000
+
+        start, end = match.span()
+        item = raw[:start].strip()
+        note = raw[end:].strip()
+
+        ws.append_row([
+            datetime.now().strftime("%d/%m/%Y"),
+            item,
+            amount,
+            note
+        ])
+
+        await update.message.reply_text(
+            f"✅ Ghi: {item} ({amount:,.0f})\n"
+            f"📝 Ghi chú: {note if note else '—'}\n"
+            f"💰 Tổng: {ws.acell('G1').value}"
+        )
+
+    except Exception as e:
+        print("Ghi nợ lỗi:", e)
 
 # --- CÁC HÀM CÒN LẠI (GIỮ NGUYÊN) ---
 async def list_books_command(update, context):
