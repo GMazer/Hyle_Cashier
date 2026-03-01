@@ -20,26 +20,37 @@ async def db_init():
         command_timeout=30,
     )
 
-async def db_upsert_user_sheet(user_id: int, chat_id: int, sheet_url: str, sheet_id: str):
-        if DB_POOL is None:
-            return
+async def db_upsert_user_sheet(telegram_user_id: int, telegram_chat_id: int, sheet_url: str, sheet_id: str):
+    if DB_POOL is None:
+        return
 
-        query = """
-        INSERT INTO user_sheets (user_id, chat_id, sheet_url, sheet_id, updated_at)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (user_id)
-        DO UPDATE SET
-            chat_id = EXCLUDED.chat_id,
-            sheet_url = EXCLUDED.sheet_url,
-            sheet_id = EXCLUDED.sheet_id,
-            updated_at = NOW();
-        """
+    query = """
+    INSERT INTO user_sheets (telegram_user_id, telegram_chat_id, sheet_url, sheet_id, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, NOW(), NOW())
+    ON CONFLICT (telegram_user_id)
+    DO UPDATE SET
+        telegram_chat_id = EXCLUDED.telegram_chat_id,
+        sheet_url = EXCLUDED.sheet_url,
+        sheet_id = EXCLUDED.sheet_id,
+        updated_at = NOW();
+    """
 
-        async with DB_POOL.acquire() as conn:
-            await conn.execute(query, user_id, chat_id, sheet_url, sheet_id)
+    async with DB_POOL.acquire() as conn:
+        await conn.execute(query, telegram_user_id, telegram_chat_id, sheet_url, sheet_id)
 
+async def db_get_user_sheet(telegram_user_id: int):
+    if DB_POOL is None:
+        return None
 
-async def db_get_user_sheet(user_id: int):
+    query = """
+    SELECT sheet_id, sheet_url
+    FROM user_sheets
+    WHERE telegram_user_id = $1;
+    """
+
+    async with DB_POOL.acquire() as conn:
+        row = await conn.fetchrow(query, telegram_user_id)
+        return dict(row) if row else None
     if DB_POOL is None:
         return None
 
