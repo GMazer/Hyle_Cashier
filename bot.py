@@ -6,6 +6,18 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, MenuButtonCommands
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from oauth2client.service_account import ServiceAccountCredentials
+import asyncpg
+
+DB_POOL = None
+
+async def db_init():
+    global DB_POOL
+    DB_POOL = await asyncpg.create_pool(
+        dsn=os.environ["DATABASE_URL"],
+        min_size=1,
+        max_size=5,
+        command_timeout=30,
+    )
 
 # --- CẤU HÌNH ---
 TOKEN = '8374820897:AAFN5p3mmpu-fcq4OBay7lD4sUV2lVHlEHo'
@@ -63,6 +75,11 @@ async def setup_commands(application):
 from telegram import BotCommand, MenuButtonCommands, BotCommandScopeChat
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("current_sheet_id"):
+        row = await db_get_user_sheet(update.effective_user.id)
+    if row:
+        context.user_data["current_sheet_id"] = row["sheet_id"]
+        context.user_data["current_sheet_url"] = row["sheet_url"]
 
     # Thu thập ID người dùng
     if 'all_users' not in context.bot_data:
@@ -385,18 +402,40 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Đã gửi xong.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if 'all_users' not in context.bot_data: context.bot_data['all_users'] = set()
+
+    if 'all_users' not in context.bot_data:
+        context.bot_data['all_users'] = set()
+
     context.bot_data['all_users'].add(update.effective_chat.id)
+
     text = update.message.text.strip()
-    
-    # Nhận Link Sheet
+
+    # ===== Nhận Link Sheet =====
     if "docs.google.com" in text:
         try:
             sh = get_google_client().open_by_url(text)
+
+            sheet_url = text.strip()
+            sheet_id = sh.id
+
             context.user_data['books'] = {sh.id: sh.title}
-            context.user_data['current_sheet_id'], context.user_data['current_book_name'] = sh.id, sh.title
+            context.user_data['current_sheet_id'] = sheet_id
+            context.user_data['current_book_name'] = sh.title
+
+            # 🔥 LƯU VÀO POSTGRES (DÙNG POSITIONAL ARG)
+            await db_upsert_user_sheet(
+                update.effective_user.id,
+                update.effective_chat.id,
+                sheet_url,
+                sheet_id
+            )
+
             await update.message.reply_text(f"✅ Đã kết nối sổ: {sh.title}")
-        except: await update.message.reply_text("❌ Lỗi quyền truy cập!")
+
+        except Exception as e:
+            print("Sheet error:", e)
+            await update.message.reply_text("❌ Lỗi quyền truy cập!")
+
         return
 
     # Ghi nợ
@@ -440,6 +479,12 @@ async def done_command(update, context):
 # --- MAIN BLOCK ---
 if __name__ == "__main__":
 
+
+    async def post_init(application):
+        await db_init()              # kết nối Postgres
+        await setup_commands(application)  # set menu
+
+
     from telegram.ext import PicklePersistence
 
     # --- 1. Khởi tạo Application ---
@@ -449,7 +494,7 @@ if __name__ == "__main__":
         ApplicationBuilder()
         .token(TOKEN)
         .persistence(persistence)
-        .post_init(setup_commands)
+        .post_init(post_init)
         .build()
     )
 
