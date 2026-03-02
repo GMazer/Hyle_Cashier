@@ -43,12 +43,22 @@ def format_vnd(x) -> str:
     if x is None:
         return "0 đ"
 
+    # Nếu là số (int/float) → xử lý trực tiếp
+    if isinstance(x, (int, float)):
+        return f"{int(x):,} đ"
+
     s = str(x).strip()
 
-    # Lấy toàn bộ chữ số (bỏ dấu , . và chữ đ)
+    # Thử parse thẳng thành số (xử lý cả "10000.0", "92000")
+    try:
+        return f"{int(float(s)):,} đ"
+    except (ValueError, OverflowError):
+        pass
+
+    # Fallback: lấy toàn bộ chữ số (bỏ dấu , . và chữ đ)
     digits = "".join(ch for ch in s if ch.isdigit())
     if not digits:
         return "0 đ"
 
     n = int(digits)
-    return f"{n:,.0f} đ"
+    return f"{n:,} đ"
