@@ -41,8 +41,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Xử lý chọn sổ thông thường
     _, bid = data.split("|", 1)
     context.user_data["current_sheet_id"] = bid
-    context.user_data["current_book_name"] = context.user_data.get("books", {}).get(bid, "Sổ đã chọn")
-    await query.edit_message_text(f"✅ Đã chọn sổ: {context.user_data['current_book_name']}")
+    book_name = context.user_data.get("books", {}).get(bid, "Sổ đã chọn")
+    context.user_data["current_book_name"] = book_name
+    await query.edit_message_text(
+        f"✅ Đã chọn sổ: **{book_name}**\n\n"
+        f"💳 Dùng /bankinfo để xem STK liên kết với sổ này\n"
+        f"📲 Dùng /pay để tạo mã QR thanh toán",
+        parse_mode="Markdown"
+    )
 
 
 async def ls_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

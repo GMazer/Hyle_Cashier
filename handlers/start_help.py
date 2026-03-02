@@ -5,17 +5,17 @@ from db import db_touch_user
 from config import BOT_EMAIL
 
 COMMANDS = [
-    BotCommand("start", "Bắt đầu / Hướng dẫn kết nối"),
-    BotCommand("help", "Xem cách ghi nợ & lệnh tắt"),
-    BotCommand("ls", "Xem 5 khoản chi gần nhất"),
-    BotCommand("so", "Menu chọn/đổi sổ"),
-    BotCommand("pay", "Tạo mã QR thanh toán"),
-    BotCommand("setbank", "Cài ngân hàng (VD: /setbank MB 123 TÊN)"),
-    BotCommand("bankinfo", "Xem thông tin STK của sổ hiện tại"),
-    BotCommand("email", "Lấy Email Bot để cấp quyền"),
-    BotCommand("new", "Tạo sổ mới"),
-    BotCommand("rename", "Đổi tên sổ"),
-    BotCommand("done", "Chốt sổ (Xóa dữ liệu cũ)"),
+    BotCommand("start",    "🏠 Bắt đầu / Hướng dẫn kết nối"),
+    BotCommand("help",     "📖 Xem cách ghi nợ & lệnh tắt"),
+    BotCommand("ls",       "🧾 Xem 5 khoản chi gần nhất + tổng"),
+    BotCommand("so",       "📂 Chọn / đổi sổ đang dùng"),
+    BotCommand("new",      "➕ Tạo sổ mới"),
+    BotCommand("rename",   "✏️ Đổi tên sổ"),
+    BotCommand("done",     "🗑 Chốt sổ – xóa dữ liệu cũ"),
+    BotCommand("setbank",  "🏦 Cài ngân hàng (VD: /setbank MB 123 TÊN)"),
+    BotCommand("bankinfo", "💳 Xem STK liên kết với sổ hiện tại"),
+    BotCommand("pay",      "📲 Tạo mã QR thanh toán"),
+    BotCommand("email",    "📧 Lấy Email Bot để cấp quyền Sheet"),
 ]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
