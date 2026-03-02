@@ -14,6 +14,8 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users = await db_get_all_chat_ids()
     ok = fail = 0
     for uid in users:
+        if uid == ADMIN_ID:
+            continue
         try:
             await context.bot.send_message(chat_id=uid, text=f"📢 **THÔNG BÁO:**\n\n{msg}", parse_mode="Markdown")
             ok += 1
