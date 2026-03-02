@@ -110,3 +110,15 @@ async def db_get_all_chat_ids():
     async with DB_POOL.acquire() as conn:
         rows = await conn.fetch(q)
         return [r["telegram_chat_id"] for r in rows]
+
+async def db_rename_sheet(telegram_user_id: int, sheet_id: str, new_title: str):
+    if DB_POOL is None:
+        return False
+    q = """
+    UPDATE user_sheets SET sheet_title = $1, updated_at = NOW()
+    WHERE telegram_user_id = $2 AND sheet_id = $3;
+    """
+    async with DB_POOL.acquire() as conn:
+        result = await conn.execute(q, new_title, telegram_user_id, sheet_id)
+        # result dạng "UPDATE 1" nếu thành công
+        return result == "UPDATE 1"

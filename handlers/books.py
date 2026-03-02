@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from db import db_list_user_sheets
+from db import db_list_user_sheets, db_rename_sheet
 from sheets import get_google_client, ensure_sheet_total, format_vnd
 from handlers.utils import require_sheet
 
@@ -23,7 +23,23 @@ async def list_books_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    _, bid = query.data.split("|")
+
+    data = query.data
+
+    # Xử lý chọn sổ để RENAME
+    if data.startswith("RENAME_PICK|"):
+        _, sid = data.split("|", 1)
+        context.user_data["rename_sheet_id"] = sid
+        old_name = context.user_data.get("books", {}).get(sid, sid)
+        context.user_data["awaiting_rename"] = True
+        await query.edit_message_text(
+            f"✏️ Đang đổi tên sổ: **{old_name}**\n\nHãy nhập tên mới:",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Xử lý chọn sổ thông thường
+    _, bid = data.split("|", 1)
     context.user_data["current_sheet_id"] = bid
     context.user_data["current_book_name"] = context.user_data.get("books", {}).get(bid, "Sổ đã chọn")
     await query.edit_message_text(f"✅ Đã chọn sổ: {context.user_data['current_book_name']}")
@@ -104,3 +120,46 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ws = get_google_client().open_by_key(sid).sheet1
     ws.batch_clear(["A2:D1000"])
     await update.message.reply_text("✅ Đã xóa trắng sổ nợ.")
+
+
+async def rename_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    rows = await db_list_user_sheets(uid)
+    if not rows:
+        return await update.message.reply_text("⚠️ Bạn chưa có sổ nào.")
+
+    context.user_data["books"] = {r["sheet_id"]: r["sheet_title"] for r in rows}
+    keyboard = [
+        [InlineKeyboardButton(f"{i+1}. {r['sheet_title']}", callback_data=f"RENAME_PICK|{r['sheet_id']}")]
+        for i, r in enumerate(rows)
+    ]
+    await update.message.reply_text(
+        "✏️ Chọn sổ muốn đổi tên:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def handle_rename_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Gọi từ message handler. Trả về True nếu đã xử lý rename, False nếu không."""
+    if not context.user_data.get("awaiting_rename"):
+        return False
+
+    new_title = update.message.text.strip()
+    sid = context.user_data.pop("rename_sheet_id", None)
+    context.user_data.pop("awaiting_rename", None)
+
+    if not sid or not new_title:
+        await update.message.reply_text("⚠️ Đã hủy đổi tên.")
+        return True
+
+    ok = await db_rename_sheet(update.effective_user.id, sid, new_title)
+    if ok:
+        # Cập nhật cache
+        if "books" in context.user_data:
+            context.user_data["books"][sid] = new_title
+        if context.user_data.get("current_sheet_id") == sid:
+            context.user_data["current_book_name"] = new_title
+        await update.message.reply_text(f"✅ Đã đổi tên sổ thành **{new_title}**", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("⚠️ Không tìm thấy sổ để đổi tên.")
+    return True

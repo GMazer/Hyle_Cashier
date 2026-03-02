@@ -14,6 +14,7 @@ COMMANDS = [
     BotCommand("bankinfo", "Xem thông tin STK của sổ hiện tại"),
     BotCommand("email", "Lấy Email Bot để cấp quyền"),
     BotCommand("new", "Tạo sổ mới"),
+    BotCommand("rename", "Đổi tên sổ"),
     BotCommand("done", "Chốt sổ (Xóa dữ liệu cũ)"),
 ]
 

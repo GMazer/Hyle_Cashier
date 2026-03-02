@@ -6,10 +6,15 @@ from telegram.ext import ContextTypes
 from db import db_touch_user, db_upsert_user_sheet
 from sheets import get_google_client, ensure_sheet_total, format_vnd
 from handlers.utils import require_sheet
+from handlers.books import handle_rename_input
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db_touch_user(update.effective_user.id, update.effective_chat.id)
     text = update.message.text.strip()
+
+    # Ưu tiên xử lý rename nếu đang chờ nhập tên mới
+    if await handle_rename_input(update, context):
+        return
 
     # Nhận Link Sheet
     if "docs.google.com" in text:
