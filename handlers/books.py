@@ -65,22 +65,82 @@ async def ls_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total = str(total_raw) if total_raw is not None else "0"
 
     rows = ws.get("A:D")
+    header_offset = 0
     if rows and rows[0] and rows[0][0].strip().lower() == "ngày":
+        header_offset = 1
         rows = rows[1:]
 
-    data_rows = [r for r in rows if len(r) >= 3 and str(r[2]).strip()]
+    # Lưu index thật trên sheet (row 1-based, +1 header)
+    data_rows = []
+    for i, r in enumerate(rows):
+        if len(r) >= 3 and str(r[2]).strip():
+            sheet_row = i + 1 + header_offset  # row thật trên sheet (1-based)
+            data_rows.append((sheet_row, r))
+
     last_5 = data_rows[-5:]
 
     def safe_get(r, i):
         return r[i].strip() if len(r) > i and r[i] else ""
 
+    # Lưu mapping stt → sheet_row để /del dùng
+    ls_map = {}
     lines = []
-    for r in last_5:
+    for stt, (sheet_row, r) in enumerate(last_5, 1):
         day, item, money, note = safe_get(r,0), safe_get(r,1), safe_get(r,2), safe_get(r,3)
-        lines.append(f"{day} | {item}: {format_vnd(money)}" + (f" | 📝 {note}" if note else ""))
+        lines.append(f"`{stt}.` {day} | {item}: {format_vnd(money)}" + (f" | 📝 {note}" if note else ""))
+        ls_map[stt] = sheet_row
+
+    context.user_data["ls_map"] = ls_map
 
     msg = "\n".join(lines) if lines else "Chưa có dữ liệu."
-    await update.message.reply_text(f"🧾 5 dòng gần nhất:\n{msg}\n💰 TỔNG: {format_vnd(total)}")
+    await update.message.reply_text(
+        f"🧾 5 dòng gần nhất:\n{msg}\n💰 TỔNG: {format_vnd(total)}\n\n"
+        f"🗑 Xóa dòng: `/del <stt>` (VD: `/del 3`)",
+        parse_mode="Markdown"
+    )
+
+
+async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sid = await require_sheet(update, context)
+    if not sid:
+        return
+
+    ls_map = context.user_data.get("ls_map", {})
+    if not ls_map:
+        return await update.message.reply_text("⚠️ Hãy dùng /ls trước để xem danh sách.")
+
+    if not context.args:
+        return await update.message.reply_text("⚠️ Cú pháp: `/del <stt>`\nVD: `/del 3`", parse_mode="Markdown")
+
+    try:
+        stt = int(context.args[0])
+    except ValueError:
+        return await update.message.reply_text("⚠️ STT phải là số. VD: `/del 2`", parse_mode="Markdown")
+
+    sheet_row = ls_map.get(stt)
+    if not sheet_row:
+        return await update.message.reply_text(f"⚠️ Không tìm thấy dòng STT {stt}. Hãy /ls lại.")
+
+    try:
+        ws = get_google_client().open_by_key(sid).sheet1
+        # Đọc dòng trước khi xóa để hiển thị
+        row_data = ws.row_values(sheet_row)
+        def safe_get(r, i):
+            return r[i].strip() if len(r) > i and r[i] else ""
+        day, item, money = safe_get(row_data,0), safe_get(row_data,1), safe_get(row_data,2)
+
+        ws.delete_rows(sheet_row)
+
+        # Clear mapping cũ vì row đã dịch
+        context.user_data["ls_map"] = {}
+
+        await update.message.reply_text(
+            f"🗑 Đã xóa: {day} | {item}: {format_vnd(money)}\n"
+            f"👉 Dùng /ls để xem lại danh sách."
+        )
+    except Exception as e:
+        logging.error(f"Lỗi xóa dòng: {e}")
+        await update.message.reply_text(f"⚠️ Lỗi xóa: {e}")
 
 
 async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

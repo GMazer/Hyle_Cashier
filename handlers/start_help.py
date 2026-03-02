@@ -8,6 +8,7 @@ COMMANDS = [
     BotCommand("start",    "🏠 Bắt đầu / Hướng dẫn kết nối"),
     BotCommand("help",     "📖 Xem cách ghi nợ & lệnh tắt"),
     BotCommand("ls",       "🧾 Xem 5 khoản chi gần nhất + tổng"),
+    BotCommand("del",      "🗑 Xóa 1 dòng theo STT (VD: /del 3)"),
     BotCommand("so",       "📂 Chọn / đổi sổ đang dùng"),
     BotCommand("new",      "➕ Tạo sổ mới"),
     BotCommand("rename",   "✏️ Đổi tên sổ"),

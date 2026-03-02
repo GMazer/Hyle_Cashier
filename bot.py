@@ -9,7 +9,7 @@ from telegram.ext import (
 from config import TOKEN
 from db import db_init
 from handlers.start_help import start, help_command, email_command, COMMANDS
-from handlers.books import list_books_command, button_callback, ls_command, new_book_command, done_command, rename_command
+from handlers.books import list_books_command, button_callback, ls_command, del_command, new_book_command, done_command, rename_command
 from handlers.bank import set_bank_command, pay_command, bank_info_command
 from handlers.message import handle_message
 from handlers.admin import broadcast_command
@@ -40,6 +40,7 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("email", email_command))
     application.add_handler(CommandHandler("ls", ls_command))
+    application.add_handler(CommandHandler("del", del_command))
     application.add_handler(CommandHandler("so", list_books_command))
     application.add_handler(CommandHandler("new", new_book_command))
     application.add_handler(CommandHandler("rename", rename_command))
