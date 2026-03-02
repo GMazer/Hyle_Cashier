@@ -12,6 +12,41 @@ async def db_init():
         max_size=5,
         command_timeout=30,
     )
+    await db_migrate()
+
+async def db_migrate():
+    """Tự động fix schema nếu constraint cũ bị sai."""
+    async with DB_POOL.acquire() as conn:
+        # Thêm cột sheet_title nếu chưa có
+        await conn.execute("""
+            ALTER TABLE user_sheets ADD COLUMN IF NOT EXISTS sheet_title TEXT;
+        """)
+
+        # Xoá constraint cũ sai (UNIQUE chỉ trên telegram_user_id)
+        old_constraints = await conn.fetch("""
+            SELECT conname FROM pg_constraint
+            WHERE conrelid = 'user_sheets'::regclass
+              AND contype = 'u'
+              AND conname != 'user_sheets_telegram_user_id_sheet_id_key';
+        """)
+        for row in old_constraints:
+            cname = row["conname"]
+            logging.info(f"[migrate] Dropping old constraint: {cname}")
+            await conn.execute(f'ALTER TABLE user_sheets DROP CONSTRAINT IF EXISTS "{cname}";')
+
+        # Tạo constraint đúng nếu chưa có
+        await conn.execute("""
+            ALTER TABLE user_sheets
+            ADD CONSTRAINT user_sheets_telegram_user_id_sheet_id_key
+            UNIQUE (telegram_user_id, sheet_id)
+            DEFERRABLE INITIALLY DEFERRED;
+        """ if not await conn.fetchval("""
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = 'user_sheets'::regclass
+              AND conname = 'user_sheets_telegram_user_id_sheet_id_key';
+        """) else "SELECT 1;")
+
+        logging.info("[migrate] DB schema OK")
 
 async def db_touch_user(telegram_user_id: int, telegram_chat_id: int):
     if DB_POOL is None:
