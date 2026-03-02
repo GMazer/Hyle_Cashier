@@ -145,6 +145,22 @@ def get_google_client():
         logging.error(f"Lỗi Auth: {e}")
         return None
 
+def ensure_sheet_format(ws):
+    # Header A1:D1
+    if (ws.acell("A1").value or "").strip().lower() != "ngày":
+        ws.update("A1:D1", [["Ngày", "Món", "Tiền", "Ghi chú"]])
+
+    # Tổng quỹ F1/G1
+    if not (ws.acell("F1").value or "").strip():
+        ws.update_acell("F1", "TỔNG QUỸ:")
+    g1 = (ws.acell("G1").value or "").strip()
+    if not g1:
+        ws.update_acell("G1", "=SUM(C:C)")
+
+    # Bank block H1:I3
+    if (ws.acell("H1").value or "").strip() != "BANK:":
+        ws.update("H1:H3", [["BANK:"], ["STK:"], ["NAME:"]])
+
 
 
 # --- ÉP CẬP NHẬT MENU LỆNH ---
@@ -490,6 +506,71 @@ async def set_bank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank_name = BANK_CODES[bank_code]
     name_up = name.upper()
 
+    # 🔥 PHẦN QUAN TRỌNG: GHI VÀO GOOGLE SHEET
+    try:
+        ws = get_google_client().open_by_key(sheet_id).sheet1
+
+        # Đảm bảo đúng format giống hình 2
+        ws.update("H1:H3", [["BANK:"], ["STK:"], ["NAME:"]])
+        ws.update_acell("I1", bank_code)
+
+        # Thêm dấu ' để giữ số 0 đầu
+        ws.update_acell("I2", f"'{stk}")
+
+        ws.update_acell("I3", name_up)
+
+    except Exception as e:
+        return await update.message.reply_text(f"⚠️ Không ghi được vào Sheet: {e}")
+
+    # ✅ Sau khi ghi thành công mới gửi xác nhận
+    await update.message.reply_text(
+        f"✅ Đã lưu ngân hàng:\n"
+        f"- Bank: **{bank_code}** ({bank_name})\n"
+        f"- STK: `{stk}`\n"
+        f"- Tên: **{name_up}**",
+        parse_mode="Markdown"
+    )
+    sheet_id = context.user_data.get("current_sheet_id")
+    if not sheet_id:
+        await update.message.reply_text(
+            "⚠️ Bạn chưa kết nối Sheet.\n👉 Hãy gửi link Google Sheet vào đây trước, rồi gõ lại /setbank."
+        )
+        return
+
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "⚠️ Cú pháp:\n"
+            "`/setbank <BANK_CODE> <STK> <TEN>`\n\n"
+            "Ví dụ:\n"
+            "`/setbank MB 0862635826 NGUYEN VAN NANG`\n"
+            "`/setbank VCB 0123456789 LE VAN A`\n\n"
+            "Bank code hỗ trợ: " + ", ".join(sorted(BANK_CODES.keys())),
+            parse_mode="Markdown"
+        )
+        return
+
+    raw_bank = context.args[0]
+    stk = context.args[1].strip()
+    name = " ".join(context.args[2:]).strip()
+
+    bank_code, suggestion = normalize_bank_code(raw_bank)
+    if not bank_code:
+        hint = f"\n👉 Bạn có muốn dùng `{suggestion}` không?" if suggestion else ""
+        await update.message.reply_text(
+            "⚠️ Bank code không hợp lệ.\n"
+            "Vui lòng nhập 1 trong các mã: " + ", ".join(sorted(BANK_CODES.keys())) +
+            hint,
+            parse_mode="Markdown"
+        )
+        return
+
+    if not stk.isdigit() or len(stk) < 6:
+        await update.message.reply_text("⚠️ STK không hợp lệ. STK phải là số và thường >= 6 ký tự.")
+        return
+
+    bank_name = BANK_CODES[bank_code]
+    name_up = name.upper()
+
 
     await update.message.reply_text(
         f"✅ Đã lưu ngân hàng:\n"
@@ -504,6 +585,7 @@ async def pay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not sheet_id: return
     try:
         ws = get_google_client().open_by_key(sheet_id).sheet1
+        ensure_sheet_format(ws)
         bank = ws.acell('I1').value
         
         # ĐỌC VÀ XỬ LÝ STK: Nếu có dấu nháy đơn ở đầu thì xóa đi
@@ -512,14 +594,14 @@ async def pay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         name = ws.acell('I3').value
         
-        total_val = (ws.acell('G1').value or "0").replace(',','').replace('.','')
+        total = ws.acell("G1", value_render_option="FORMATTED_VALUE").value
         total = int(total_val)
         
         if context.args: total = int(context.args[0]) * 1000
         if total <= 0: return await update.message.reply_text("🎉 Hết nợ!")
         
         # API VietQR với STK đã được làm sạch
-        qr_url = f"https://img.vietqr.io/image/{bank}-{stk}-compact2.png?amount={total}&addInfo=Tra%20tien%20an%20sang"
+        qr_url = f"https://img.vietqr.io/image/{bank}-{stk}-compact2.png?amount={total}&addInfo=Tra%20tien"
         
         await update.message.reply_photo(
             photo=qr_url, 
