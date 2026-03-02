@@ -55,10 +55,10 @@ async def ls_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = []
     for r in last_5:
         day, item, money, note = safe_get(r,0), safe_get(r,1), safe_get(r,2), safe_get(r,3)
-        lines.append(f"{day} | {item}: {money}" + (f" | 📝 {note}" if note else ""))
+        lines.append(f"{day} | {item}: {format_vnd(money)}" + (f" | 📝 {note}" if note else ""))
 
     msg = "\n".join(lines) if lines else "Chưa có dữ liệu."
-    await update.message.reply_text(f"🧾 5 dòng gần nhất:\n{msg}\n💰 TỔNG: format_vnd(total)")
+    await update.message.reply_text(f"🧾 5 dòng gần nhất:\n{msg}\n💰 TỔNG: {format_vnd(total)}")
 
 
 async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
