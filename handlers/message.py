@@ -90,6 +90,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             money_match = all_nums[-1]
 
         amount = float(money_match.group()) * 1000
+        amount = int(amount)  # Ghi số nguyên vào sheet, tránh float issue
 
         # 3) Phần trước số tiền = tên món, phần sau = ghi chú
         before_money = remaining[:money_match.start()].strip()
@@ -107,10 +108,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]])
 
        # sau khi ws.update(...) xong
-        total = ws.acell("G1", value_render_option="FORMATTED_VALUE").value
-        if not total:
-            total_raw = ws.acell("G1", value_render_option="UNFORMATTED_VALUE").value
-            total = total_raw if total_raw is not None else 0
+        total_raw = ws.acell("G1", value_render_option="UNFORMATTED_VALUE").value
+        total = total_raw if total_raw is not None else 0
 
         await update.message.reply_text(
             f"✅ Ghi: {item} ({format_vnd(amount)})\n"

@@ -59,10 +59,8 @@ async def ls_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ws = get_google_client().open_by_key(sid).sheet1
     ensure_sheet_total(ws)
 
-    total = ws.acell("G1", value_render_option="FORMATTED_VALUE").value
-    if not total:
-        total_raw = ws.acell("G1", value_render_option="UNFORMATTED_VALUE").value
-        total = str(total_raw) if total_raw is not None else "0"
+    total_raw = ws.acell("G1", value_render_option="UNFORMATTED_VALUE").value
+    total = total_raw if total_raw is not None else 0
 
     rows = ws.get("A:D")
     header_offset = 0
