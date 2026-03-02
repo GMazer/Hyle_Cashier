@@ -46,7 +46,37 @@ async def db_init():
         command_timeout=30,
     )
 
-async def db_upsert_user_sheet(telegram_user_id: int, telegram_chat_id: int, sheet_url: str, sheet_id: str):
+async def db_list_user_sheets(telegram_user_id: int):
+    if DB_POOL is None:
+        return []
+
+    q = """
+    SELECT sheet_id, sheet_url, COALESCE(sheet_title, sheet_id) AS sheet_title
+    FROM user_sheets
+    WHERE telegram_user_id = $1
+    ORDER BY updated_at DESC;
+    """
+    async with DB_POOL.acquire() as conn:
+        rows = await conn.fetch(q, telegram_user_id)
+        return [dict(r) for r in rows]
+
+async def db_upsert_user_sheet(telegram_user_id: int, telegram_chat_id: int, sheet_url: str, sheet_id: str, sheet_title: str = None):
+    if DB_POOL is None:
+        return
+
+    query = """
+    INSERT INTO user_sheets (telegram_user_id, telegram_chat_id, sheet_url, sheet_id, sheet_title, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+    ON CONFLICT (telegram_user_id, sheet_id)
+    DO UPDATE SET
+        telegram_chat_id = EXCLUDED.telegram_chat_id,
+        sheet_url = EXCLUDED.sheet_url,
+        sheet_title = COALESCE(EXCLUDED.sheet_title, user_sheets.sheet_title),
+        updated_at = NOW();
+    """
+
+    async with DB_POOL.acquire() as conn:
+        await conn.execute(query, telegram_user_id, telegram_chat_id, sheet_url, sheet_id, sheet_title)
     if DB_POOL is None:
         return
 
@@ -144,6 +174,14 @@ def get_google_client():
     except Exception as e:
         logging.error(f"Lỗi Auth: {e}")
         return None
+    
+def ensure_sheet_total(ws):
+    # đảm bảo có nhãn + công thức tổng giống format chuẩn
+    if not (ws.acell("F1").value or "").strip():
+        ws.update_acell("F1", "TỔNG QUỸ:")
+    g1 = (ws.acell("G1").value or "").strip()
+    if not g1:
+        ws.update_acell("G1", "=SUM(C:C)")
 
 def ensure_sheet_format(ws):
     # Header A1:D1
@@ -694,20 +732,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "docs.google.com" in text:
         try:
             sh = get_google_client().open_by_url(text)
-
             sheet_url = text.strip()
             sheet_id = sh.id
+            sheet_title = sh.title
 
-            context.user_data['books'] = {sh.id: sh.title}
+            # cập nhật session
+            if 'books' not in context.user_data:
+                context.user_data['books'] = {}
+            context.user_data['books'][sheet_id] = sheet_title
             context.user_data['current_sheet_id'] = sheet_id
-            context.user_data['current_book_name'] = sh.title
+            context.user_data['current_book_name'] = sheet_title
 
-            # 🔥 LƯU VÀO POSTGRES (DÙNG POSITIONAL ARG)
+            # lưu DB
             await db_upsert_user_sheet(
                 update.effective_user.id,
                 update.effective_chat.id,
                 sheet_url,
-                sheet_id
+                sheet_id,
+                sheet_title
             )
 
             await update.message.reply_text(f"✅ Đã kết nối sổ: {sh.title}")
@@ -725,6 +767,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         ws = get_google_client().open_by_key(sid).sheet1
+        ensure_sheet_total(ws)
 
         import re
         raw = text.strip()
@@ -751,10 +794,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             note
         ]])
 
+        total = ws.acell("G1", value_render_option="FORMATTED_VALUE").value
         await update.message.reply_text(
             f"✅ Ghi: {item} ({amount:,.0f})\n"
             f"📝 Ghi chú: {note if note else '—'}\n"
-            f"💰 Tổng: {ws.acell('G1').value}"
+            f"💰 Tổng: {total}"
         )
 
     except Exception as e:
@@ -762,16 +806,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- CÁC HÀM CÒN LẠI (GIỮ NGUYÊN) ---
 async def list_books_command(update, context):
-    books = context.user_data.get('books', {})
-    keyboard = [[InlineKeyboardButton(name, callback_data=f"SELECT|{id}")] for id, name in books.items()]
+    # lấy từ DB
+    rows = await db_list_user_sheets(update.effective_user.id)
+
+    if not rows:
+        return await update.message.reply_text("⚠️ Bạn chưa có sổ nào. Gửi link Google Sheet để kết nối trước nhé.")
+
+    # đồng bộ lại session books
+    context.user_data['books'] = {r["sheet_id"]: r["sheet_title"] for r in rows}
+
+    keyboard = [[InlineKeyboardButton(r["sheet_title"], callback_data=f"SELECT|{r['sheet_id']}")] for r in rows]
     await update.message.reply_text("📂 Chọn sổ:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def button_callback(update, context):
     query = update.callback_query
     await query.answer()
     _, bid = query.data.split("|")
+
     context.user_data['current_sheet_id'] = bid
-    await query.edit_message_text(f"✅ Đã chọn sổ mới.")
+    context.user_data['current_book_name'] = (context.user_data.get("books", {}).get(bid) or "Sổ đã chọn")
+
+    await query.edit_message_text(f"✅ Đã chọn sổ: {context.user_data['current_book_name']}")
 
 async def ls_command(update, context):
     sid = await require_sheet(update, context)
@@ -780,11 +835,20 @@ async def ls_command(update, context):
 
     ws = get_google_client().open_by_key(sid).sheet1
 
+    # ✅ đảm bảo ô tổng đúng chuẩn
+    ensure_sheet_total(ws)
+
+    # ✅ đọc tổng chắc chắn không None
+    total = ws.acell("G1", value_render_option="FORMATTED_VALUE").value
+    if not total:
+        total_raw = ws.acell("G1", value_render_option="UNFORMATTED_VALUE").value
+        total = str(total_raw) if total_raw is not None else "0"
+
     # Lấy dữ liệu đúng vùng A:D (Ngày, Món, Tiền, Ghi chú)
     rows = ws.get("A:D")
 
     # Bỏ header nếu có
-    if rows and rows[0] and rows[0][0].strip().lower() == "ngày":
+    if rows and rows[0] and rows[0][0] and rows[0][0].strip().lower() == "ngày":
         rows = rows[1:]
 
     # Lọc dòng có tiền (cột C) và lấy 5 dòng cuối
@@ -807,7 +871,7 @@ async def ls_command(update, context):
             lines.append(f"{day} | {item}: {money}")
 
     msg = "\n".join(lines) if lines else "Chưa có dữ liệu."
-    await update.message.reply_text(f"🧾 5 dòng gần nhất:\n{msg}\n💰 TỔNG: {ws.acell('G1').value}")
+    await update.message.reply_text(f"🧾 5 dòng gần nhất:\n{msg}\n💰 TỔNG: {total}")
 
 async def done_command(update, context):
     ws = get_google_client().open_by_key(context.user_data.get('current_sheet_id')).sheet1
