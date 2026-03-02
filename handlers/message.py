@@ -51,18 +51,56 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws = get_google_client().open_by_key(sid).sheet1
         ensure_sheet_total(ws)
 
-        m = re.search(r"\d+(\.\d+)?", text)
-        if not m:
-            return
+        # --- Parse input ---
+        # Format: [ngày] <tên món> <số tiền> [ghi chú]
+        # VD: "26/2 xúc xích 10"   → ngày=26/02/2026, item=xúc xích, amount=10k
+        #     "Banh mi 20"          → ngày=hôm nay, item=Banh mi, amount=20k
+        #     "Pho 40 ngon lắm"     → ngày=hôm nay, item=Pho, amount=40k, note=ngon lắm
 
-        amount = float(m.group()) * 1000
-        start, end = m.span()
-        item = text[:start].strip()
-        note = text[end:].strip()
+        remaining = text
+        today = datetime.now()
+
+        # 1) Tách ngày ở đầu (nếu có): d/m hoặc d/m/y
+        date_match = re.match(r"^(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\s+", remaining)
+        if date_match:
+            day = int(date_match.group(1))
+            month = int(date_match.group(2))
+            year_str = date_match.group(3)
+            if year_str:
+                year = int(year_str)
+                if year < 100:
+                    year += 2000
+            else:
+                year = today.year
+            try:
+                date_str = f"{day:02d}/{month:02d}/{year}"
+            except Exception:
+                date_str = today.strftime("%d/%m/%Y")
+            remaining = remaining[date_match.end():]
+        else:
+            date_str = today.strftime("%d/%m/%Y")
+
+        # 2) Tách số tiền (số cuối cùng trong chuỗi còn lại)
+        money_match = re.search(r"(\d+(?:\.\d+)?)\s*$", remaining)
+        if not money_match:
+            # Thử tìm số cuối cùng bất kỳ đâu
+            all_nums = list(re.finditer(r"\d+(?:\.\d+)?", remaining))
+            if not all_nums:
+                return
+            money_match = all_nums[-1]
+
+        amount = float(money_match.group()) * 1000
+
+        # 3) Phần trước số tiền = tên món, phần sau = ghi chú
+        before_money = remaining[:money_match.start()].strip()
+        after_money = remaining[money_match.end():].strip()
+
+        item = before_money if before_money else "Khác"
+        note = after_money
 
         next_row = len(ws.col_values(1)) + 1
         ws.update(f"A{next_row}:D{next_row}", [[
-            datetime.now().strftime("%d/%m/%Y"),
+            date_str,
             item,
             amount,
             note,
@@ -76,7 +114,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"✅ Ghi: {item} ({format_vnd(amount)})\n"
-            f"📝 Ghi chú: {note if note else '—'}\n"
+            f"� Ngày: {date_str}\n"
+            f"�📝 Ghi chú: {note if note else '—'}\n"
             f"💰 Tổng: {format_vnd(total)}"
         )
     except Exception as e:
