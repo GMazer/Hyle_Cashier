@@ -10,7 +10,7 @@ from config import TOKEN
 from db import db_init
 from handlers.start_help import start, help_command, email_command, COMMANDS
 from handlers.books import list_books_command, button_callback, ls_command, new_book_command, done_command
-from handlers.bank import set_bank_command, pay_command
+from handlers.bank import set_bank_command, pay_command, bank_info_command
 from handlers.message import handle_message
 from handlers.admin import broadcast_command
 
@@ -45,6 +45,7 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("done", done_command))
     application.add_handler(CommandHandler("setbank", set_bank_command))
     application.add_handler(CommandHandler("pay", pay_command))
+    application.add_handler(CommandHandler("bankinfo", bank_info_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

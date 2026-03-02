@@ -88,3 +88,34 @@ async def pay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         await update.message.reply_text(f"⚠️ Sổ chưa cài STK hoặc lỗi: {e}")
+
+
+async def bank_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheet_id = context.user_data.get("current_sheet_id")
+    if not sheet_id:
+        return await update.message.reply_text("⚠️ Chưa kết nối sổ. Dùng /so để chọn sổ.")
+
+    book_name = context.user_data.get("current_book_name", "Sổ hiện tại")
+    try:
+        ws = get_google_client().open_by_key(sheet_id).sheet1
+        bank = (ws.acell("I1").value or "").strip()
+        stk  = (ws.acell("I2").value or "").strip().lstrip("'")
+        name = (ws.acell("I3").value or "").strip()
+
+        if not bank and not stk and not name:
+            return await update.message.reply_text(
+                f"⚠️ Sổ **{book_name}** chưa cài thông tin ngân hàng.\n"
+                "👉 Dùng `/setbank <BANK> <STK> <TÊN>` để cài.",
+                parse_mode="Markdown"
+            )
+
+        bank_name = BANK_CODES.get(bank.upper(), bank)
+        await update.message.reply_text(
+            f"🏦 **Thông tin thanh toán - {book_name}**\n\n"
+            f"🏛 Ngân hàng: **{bank}** ({bank_name})\n"
+            f"💳 STK: `{stk}`\n"
+            f"👤 Tên: **{name}**",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Lỗi đọc thông tin ngân hàng: {e}")

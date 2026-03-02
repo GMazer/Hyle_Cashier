@@ -1,7 +1,7 @@
 from telegram import Update, BotCommand, MenuButtonCommands, BotCommandScopeChat
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from db import db_touch_user, db_get_user_sheet
+from db import db_touch_user
 from config import BOT_EMAIL
 
 COMMANDS = [
@@ -11,6 +11,7 @@ COMMANDS = [
     BotCommand("so", "Menu chọn/đổi sổ"),
     BotCommand("pay", "Tạo mã QR thanh toán"),
     BotCommand("setbank", "Cài ngân hàng (VD: /setbank MB 123 TÊN)"),
+    BotCommand("bankinfo", "Xem thông tin STK của sổ hiện tại"),
     BotCommand("email", "Lấy Email Bot để cấp quyền"),
     BotCommand("new", "Tạo sổ mới"),
     BotCommand("done", "Chốt sổ (Xóa dữ liệu cũ)"),
@@ -21,12 +22,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Auto-restore session từ DB
     if not context.user_data.get("current_sheet_id"):
-        row = await db_get_user_sheet(update.effective_user.id)
-        if row:
-            context.user_data["current_sheet_id"] = row["sheet_id"]
-            context.user_data["current_sheet_url"] = row["sheet_url"]
-            context.user_data["books"] = {row["sheet_id"]: "Sổ đã kết nối"}
-            context.user_data["current_book_name"] = "Sổ đã kết nối"
+        from db import db_list_user_sheets
+        sheets = await db_list_user_sheets(update.effective_user.id)
+        if sheets:
+            context.user_data["books"] = {r["sheet_id"]: r["sheet_title"] for r in sheets}
+            # Chọn sổ gần nhất (updated_at DESC)
+            latest = sheets[0]
+            context.user_data["current_sheet_id"] = latest["sheet_id"]
+            context.user_data["current_sheet_url"] = latest["sheet_url"]
+            context.user_data["current_book_name"] = latest["sheet_title"]
 
     chat_id = update.effective_chat.id
     await context.bot.set_my_commands(COMMANDS, scope=BotCommandScopeChat(chat_id))
