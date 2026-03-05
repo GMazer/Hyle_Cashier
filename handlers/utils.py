@@ -26,17 +26,23 @@ async def require_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         row = await db_get_user_sheet(update.effective_user.id)
         if row:
+            title = row.get("sheet_title", "Sổ đã kết nối")
             context.user_data["current_sheet_id"] = row["sheet_id"]
             context.user_data["current_sheet_url"] = row["sheet_url"]
-            context.user_data["books"] = {row["sheet_id"]: "Sổ đã kết nối"}
-            context.user_data["current_book_name"] = "Sổ đã kết nối"
+            context.user_data["books"] = {row["sheet_id"]: title}
+            context.user_data["current_book_name"] = title
             return row["sheet_id"]
     except Exception as e:
         logging.error(f"require_sheet restore error: {e}")
 
     await update.message.reply_text(
-        "⚠️ Bạn chưa kết nối sổ.\n\n"
-        "👉 Hãy gửi link Google Sheet vào đây trước.\n"
-        "Hoặc dùng /new để tạo sổ mới."
+        "⚠️ **Chưa kết nối sổ!**\n\n"
+        "👉 **Cách kết nối:**\n"
+        "1️⃣ Dùng /email để lấy email Bot\n"
+        "2️⃣ Mở Google Sheet → Share quyền **Editor** cho email Bot\n"
+        "3️⃣ Gửi link Sheet vào đây\n\n"
+        "📌 Hoặc tạo sổ mới: `/new <tên sổ>`\n"
+        "📂 Chọn sổ đã có: /so",
+        parse_mode="Markdown"
     )
     return None

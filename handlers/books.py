@@ -10,7 +10,11 @@ async def list_books_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     rows = await db_list_user_sheets(update.effective_user.id)
     if not rows:
         return await update.message.reply_text(
-            "⚠️ Bạn chưa có sổ nào. Gửi link Google Sheet để kết nối trước nhé."
+            "⚠️ Bạn chưa có sổ nào.\n\n"
+            "👉 **Cách thêm sổ:**\n"
+            "1️⃣ Tạo mới: `/new <tên sổ>` (VD: `/new AnSang`)\n"
+            "2️⃣ Hoặc gửi link Google Sheet có sẵn vào đây.",
+            parse_mode="Markdown"
         )
     context.user_data["books"] = {r["sheet_id"]: r["sheet_title"] for r in rows}
     keyboard = [
@@ -105,7 +109,11 @@ async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ls_map = context.user_data.get("ls_map", {})
     if not ls_map:
-        return await update.message.reply_text("⚠️ Hãy dùng /ls trước để xem danh sách.")
+        return await update.message.reply_text(
+            "⚠️ Chưa có danh sách để xóa.\n\n"
+            "👉 Dùng /ls trước để xem danh sách, sau đó dùng `/del <stt>` để xóa.",
+            parse_mode="Markdown"
+        )
 
     if not context.args:
         return await update.message.reply_text("⚠️ Cú pháp: `/del <stt>`\nVD: `/del 3`", parse_mode="Markdown")
@@ -113,11 +121,19 @@ async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         stt = int(context.args[0])
     except ValueError:
-        return await update.message.reply_text("⚠️ STT phải là số. VD: `/del 2`", parse_mode="Markdown")
+        return await update.message.reply_text(
+            "⚠️ STT phải là **số**.\n\n"
+            "📌 VD: `/del 2` để xóa dòng thứ 2 trong danh sách /ls",
+            parse_mode="Markdown"
+        )
 
     sheet_row = ls_map.get(stt)
     if not sheet_row:
-        return await update.message.reply_text(f"⚠️ Không tìm thấy dòng STT {stt}. Hãy /ls lại.")
+        return await update.message.reply_text(
+            f"⚠️ Không tìm thấy dòng STT **{stt}**.\n\n"
+            "👉 Dùng /ls để xem lại danh sách mới nhất, rồi gõ `/del <stt>`.",
+            parse_mode="Markdown"
+        )
 
     try:
         ws = get_google_client().open_by_key(sid).sheet1
@@ -138,12 +154,25 @@ async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Lỗi xóa dòng: {e}")
-        await update.message.reply_text(f"⚠️ Lỗi xóa: {e}")
+        await update.message.reply_text(
+            f"❌ Không xóa được dòng.\n\n"
+            f"🔍 Lỗi: `{e}`\n\n"
+            "👉 Kiểm tra Bot đã được cấp quyền **Editor** trên Sheet chưa.\n"
+            "Dùng /email để lấy email Bot.",
+            parse_mode="Markdown"
+        )
 
 
 async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        return await update.message.reply_text("⚠️ Hãy nhập tên sổ. VD: `/new AnSang`", parse_mode="Markdown")
+        return await update.message.reply_text(
+            "⚠️ **Thiếu tên sổ!**\n\n"
+            "📝 Cú pháp: `/new <tên sổ>`\n\n"
+            "📌 VD:\n"
+            "• `/new AnSang`\n"
+            "• `/new Nhom Ban Than`",
+            parse_mode="Markdown"
+        )
 
     book_name = " ".join(context.args)
     await update.message.reply_text(f"⏳ Đang tạo sổ **{book_name}**...", parse_mode="Markdown")
@@ -174,13 +203,19 @@ async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Lỗi tạo sổ: {e}")
-        await update.message.reply_text("⛔ Bot bị Google chặn tạo file.\n👉 Hãy tạo thủ công rồi gửi Link vào đây.")
+        await update.message.reply_text(
+            "⛔ Không thể tạo sổ tự động.\n\n"
+            "👉 Hãy tạo thủ công:\n"
+            "1️⃣ Tạo Google Sheet mới\n"
+            "2️⃣ Share quyền **Editor** cho email Bot (dùng /email để xem)\n"
+            "3️⃣ Gửi link Sheet vào đây để kết nối."
+        )
 
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sid = context.user_data.get("current_sheet_id")
+    sid = await require_sheet(update, context)
     if not sid:
-        return await update.message.reply_text("⚠️ Chưa kết nối sổ.")
+        return
     ws = get_google_client().open_by_key(sid).sheet1
     ws.batch_clear(["A2:D1000"])
     await update.message.reply_text("✅ Đã xóa trắng sổ nợ.")
@@ -190,7 +225,12 @@ async def rename_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     rows = await db_list_user_sheets(uid)
     if not rows:
-        return await update.message.reply_text("⚠️ Bạn chưa có sổ nào.")
+        return await update.message.reply_text(
+            "⚠️ Bạn chưa có sổ nào để đổi tên.\n\n"
+            "👉 Tạo sổ mới: `/new <tên sổ>`\n"
+            "Hoặc gửi link Google Sheet vào đây.",
+            parse_mode="Markdown"
+        )
 
     context.user_data["books"] = {r["sheet_id"]: r["sheet_title"] for r in rows}
     keyboard = [

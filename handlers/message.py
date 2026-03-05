@@ -39,7 +39,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Đã kết nối sổ: {sheet_title}")
         except Exception as e:
             logging.error(f"Sheet error: {e}")
-            await update.message.reply_text(f"❌ Sheet error: {e}")
+            await update.message.reply_text(
+                f"❌ Không kết nối được Sheet.\n\n"
+                f"🔍 Lỗi: `{e}`\n\n"
+                "👉 Kiểm tra:\n"
+                "• Link Sheet có đúng không?\n"
+                "• Bot đã được share quyền **Editor** chưa?\n"
+                "• Dùng /email để lấy email Bot.",
+                parse_mode="Markdown"
+            )
         return
 
     # Ghi nợ
@@ -119,4 +127,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Ghi nợ lỗi: {e}")
-        await update.message.reply_text(f"⚠️ Lỗi ghi nợ: {e}")
+        await update.message.reply_text(
+            f"❌ Không ghi được vào sổ.\n\n"
+            f"🔍 Lỗi: `{e}`\n\n"
+            "👉 Thử:\n"
+            "• Dùng /so để chọn lại sổ\n"
+            "• Hoặc gửi lại link Sheet\n"
+            "• Kiểm tra Bot có quyền Editor: /email",
+            parse_mode="Markdown"
+        )

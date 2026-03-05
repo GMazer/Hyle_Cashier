@@ -63,7 +63,7 @@ async def db_touch_user(telegram_user_id: int, telegram_chat_id: int):
 async def db_get_user_sheet(telegram_user_id: int):
     if DB_POOL is None:
         return None
-    q = "SELECT sheet_id, sheet_url FROM user_sheets WHERE telegram_user_id = $1;"
+    q = "SELECT sheet_id, sheet_url, COALESCE(sheet_title, sheet_id) AS sheet_title FROM user_sheets WHERE telegram_user_id = $1 ORDER BY updated_at DESC LIMIT 1;"
     async with DB_POOL.acquire() as conn:
         row = await conn.fetchrow(q, telegram_user_id)
         return dict(row) if row else None
