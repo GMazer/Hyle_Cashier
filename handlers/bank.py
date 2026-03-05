@@ -76,7 +76,10 @@ async def pay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total = int(float(total_str or 0))
 
         if context.args:
-            total = int(context.args[0]) * 1000
+            try:
+                total = int(float(context.args[0]) * 1000)
+            except ValueError:
+                return await update.message.reply_text("⚠️ Số tiền không hợp lệ. Vui lòng nhập số (VD: 50 hoặc 50.5)")
         if total <= 0:
             return await update.message.reply_text("🎉 Hết nợ!")
 
