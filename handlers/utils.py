@@ -3,6 +3,22 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from db import db_get_user_sheet
 
+def format_vnd(value) -> str:
+    """
+    Nhận int/float/str (vd: 25000, '25,000', '25.000 đ') -> '25,000 đ'
+    """
+    if value is None:
+        return "0 đ"
+
+    s = str(value).strip()
+    digits = "".join(ch for ch in s if ch.isdigit())
+
+    if digits == "":
+        return "0 đ"
+
+    n = int(digits)
+    return f"{n:,.0f} đ"
+
 async def require_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sid = context.user_data.get("current_sheet_id")
     if sid:
