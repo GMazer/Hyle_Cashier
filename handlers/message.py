@@ -7,10 +7,19 @@ from db import db_touch_user, db_upsert_user_sheet
 from sheets import get_google_client, ensure_sheet_total, format_vnd
 from handlers.utils import require_sheet
 from handlers.books import handle_rename_input
+from handlers.menu import (
+    ALL_MENU_BUTTONS, BTN_LS, BTN_PAY, BTN_SO,
+    BTN_BANKINFO, BTN_NEW, BTN_HELP, BTN_EMAIL,
+    get_menu, MENU_CONNECTED,
+)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db_touch_user(update.effective_user.id, update.effective_chat.id)
     text = update.message.text.strip()
+
+    # ── Xử lý sticky menu buttons ──
+    if text in ALL_MENU_BUTTONS:
+        return await _handle_menu_button(update, context, text)
 
     # Ưu tiên xử lý rename nếu đang chờ nhập tên mới
     if await handle_rename_input(update, context):
@@ -36,7 +45,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sheet_id,
                 sheet_title,
             )
-            await update.message.reply_text(f"✅ Đã kết nối sổ: {sheet_title}")
+            # Gửi xác nhận + cập nhật menu sang MENU_CONNECTED
+            await update.message.reply_text(
+                f"✅ Đã kết nối sổ: **{sheet_title}**\n\n"
+                "👇 Dùng menu bên dưới để thao tác nhanh.",
+                parse_mode="Markdown",
+                reply_markup=MENU_CONNECTED
+            )
         except Exception as e:
             logging.error(f"Sheet error: {e}")
             await update.message.reply_text(
@@ -115,14 +130,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             note,
         ]])
 
-       # sau khi ws.update(...) xong
+        # sau khi ws.update(...) xong
         total_raw = ws.acell("G1", value_render_option="UNFORMATTED_VALUE").value
         total = total_raw if total_raw is not None else 0
 
         await update.message.reply_text(
             f"✅ Ghi: {item} ({format_vnd(amount)})\n"
-            f"� Ngày: {date_str}\n"
-            f"�📝 Ghi chú: {note if note else '—'}\n"
+            f"📅 Ngày: {date_str}\n"
+            f"📝 Ghi chú: {note if note else '—'}\n"
             f"💰 Tổng: {format_vnd(total)}"
         )
     except Exception as e:
@@ -136,3 +151,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Kiểm tra Bot có quyền Editor: /email",
             parse_mode="Markdown"
         )
+
+
+async def _handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Dispatch sticky-menu button presses to the appropriate command handler."""
+    if text == BTN_LS:
+        from handlers.books import ls_command
+        return await ls_command(update, context)
+
+    if text == BTN_PAY:
+        from handlers.bank import pay_command
+        return await pay_command(update, context)
+
+    if text == BTN_SO:
+        from handlers.books import list_books_command
+        return await list_books_command(update, context)
+
+    if text == BTN_BANKINFO:
+        from handlers.bank import bank_info_command
+        return await bank_info_command(update, context)
+
+    if text == BTN_NEW:
+        # /new cần args, nên gợi ý nhập tên
+        menu = get_menu(context)
+        return await update.message.reply_text(
+            "➕ **Tạo sổ mới**\n\n"
+            "📝 Hãy nhập lệnh kèm tên sổ:\n"
+            "`/new <tên sổ>`\n\n"
+            "📌 VD:\n"
+            "• `/new AnSang`\n"
+            "• `/new Nhom Ban Than`",
+            parse_mode="Markdown",
+            reply_markup=menu
+        )
+
+    if text == BTN_HELP:
+        from handlers.start_help import help_command
+        return await help_command(update, context)
+
+    if text == BTN_EMAIL:
+        from handlers.start_help import email_command
+        return await email_command(update, context)

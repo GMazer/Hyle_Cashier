@@ -35,14 +35,16 @@ async def require_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"require_sheet restore error: {e}")
 
+    from handlers.menu import MENU_NEW_USER
     await update.message.reply_text(
         "⚠️ **Chưa kết nối sổ!**\n\n"
         "👉 **Cách kết nối:**\n"
         "1️⃣ Dùng /email để lấy email Bot\n"
         "2️⃣ Mở Google Sheet → Share quyền **Editor** cho email Bot\n"
         "3️⃣ Gửi link Sheet vào đây\n\n"
-        "📌 Hoặc tạo sổ mới: `/new <tên sổ>`\n"
+        "📌 Hoặc bấm **➕ Tạo sổ** bên dưới.\n"
         "📂 Chọn sổ đã có: /so",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        reply_markup=MENU_NEW_USER
     )
     return None

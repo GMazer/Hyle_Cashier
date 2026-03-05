@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from db import db_touch_user
 from config import BOT_EMAIL
+from handlers.menu import get_menu
 
 COMMANDS = [
     BotCommand("start",    "🏠 Bắt đầu / Hướng dẫn kết nối"),
@@ -41,6 +42,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.full_name
     books = context.user_data.get("books", {})
     current_book = context.user_data.get("current_book_name", "Chưa chọn")
+    menu = get_menu(context)
 
     if books:
         msg = (
@@ -49,19 +51,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💵 **Ghi nợ nhanh:**\n"
             "   `Banh mi 20` (Hôm nay)\n"
             "   `30/1 Pho 40` (Ngày cũ)\n\n"
-            "⚙️ **Lệnh tắt:** /ls, /so, /pay, /help"
+            "⚙️ **Lệnh tắt:** /ls, /so, /pay, /help\n\n"
+            "👇 Dùng menu bên dưới để thao tác nhanh."
         )
     else:
         msg = (
             f"👋 **Chào mừng {user_name} đến với Bot Ghi Nợ Ăn Sáng!**\n\n"
             f"1️⃣ Share quyền Editor cho: `{BOT_EMAIL}`\n"
-            f"2️⃣ Gửi Link Sheet vào đây để kết nối."
+            f"2️⃣ Gửi Link Sheet vào đây để kết nối.\n\n"
+            "👇 Hoặc bấm **➕ Tạo sổ** bên dưới."
         )
 
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=menu)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    menu = get_menu(context)
     await update.message.reply_text(
         "✅ **Bước 1:** Share quyền **Editor** cho email bot:\n"
         f"`{BOT_EMAIL}`",
@@ -78,10 +83,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Ngày cũ: `30/01 Pho 40`\n\n"
         "📂 **Quản lý sổ:** `/so` | `/new` | `/ls`\n"
         "🏦 **Ngân hàng:** `/setbank MB 0123456789 TEN` → `/pay`\n"
-        "🧾 **Khác:** `/email` | `/done` | `/start`",
-        parse_mode=ParseMode.MARKDOWN
+        "🧾 **Khác:** `/email` | `/done` | `/start`\n\n"
+        "👇 Hoặc dùng menu bên dưới để thao tác nhanh.",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=menu
     )
 
 
 async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"📧 Email Bot:\n`{BOT_EMAIL}`", parse_mode="Markdown")
+    menu = get_menu(context)
+    await update.message.reply_text(
+        f"📧 Email Bot:\n`{BOT_EMAIL}`\n\n"
+        "👉 Share quyền **Editor** cho email này trên Google Sheet,\n"
+        "rồi gửi link Sheet vào đây.",
+        parse_mode="Markdown",
+        reply_markup=menu
+    )

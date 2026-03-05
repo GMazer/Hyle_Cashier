@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes
 from db import db_list_user_sheets, db_rename_sheet
 from sheets import get_google_client, ensure_sheet_total, format_vnd
 from handlers.utils import require_sheet
+from handlers.menu import get_menu, MENU_CONNECTED
 
 async def list_books_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rows = await db_list_user_sheets(update.effective_user.id)
@@ -49,9 +50,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["current_book_name"] = book_name
     await query.edit_message_text(
         f"✅ Đã chọn sổ: **{book_name}**\n\n"
-        f"💳 Dùng /bankinfo để xem STK liên kết với sổ này\n"
-        f"📲 Dùng /pay để tạo mã QR thanh toán",
+        f"💵 Ghi nợ nhanh: `Banh mi 20`\n"
+        f"🧾 Xem nợ: /ls\n"
+        f"📲 Thanh toán: /pay\n"
+        f"💳 Xem STK: /bankinfo\n\n"
+        f"👇 Hoặc dùng menu bên dưới.",
         parse_mode="Markdown"
+    )
+    # Gửi thêm 1 tin nhắn ngắn kèm reply_markup để cập nhật menu
+    await query.message.reply_text(
+        f"📂 Sổ hiện tại: **{book_name}**",
+        parse_mode="Markdown",
+        reply_markup=MENU_CONNECTED
     )
 
 
@@ -197,9 +207,13 @@ async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["current_book_name"] = book_name
 
         await update.message.reply_text(
-            f"✅ **Tạo sổ thành công!**\n📂 Tên: **{book_name}**\n🔗 [Xem Sheet]({sh.url})",
+            f"✅ **Tạo sổ thành công!**\n"
+            f"📂 Tên: **{book_name}**\n"
+            f"🔗 [Xem Sheet]({sh.url})\n\n"
+            f"👇 Dùng menu bên dưới để thao tác nhanh.",
             parse_mode="Markdown",
             disable_web_page_preview=True,
+            reply_markup=MENU_CONNECTED,
         )
     except Exception as e:
         logging.error(f"Lỗi tạo sổ: {e}")
