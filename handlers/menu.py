@@ -19,12 +19,11 @@ BTN_SO       = "📂 Chọn sổ"
 BTN_BANKINFO = "💳 Ngân hàng"
 BTN_NEW      = "➕ Tạo sổ"
 BTN_HELP     = "📖 Hướng dẫn"
-BTN_EMAIL    = "📧 Email Bot"
 
 # Tập hợp tất cả button text để message handler nhận diện
 ALL_MENU_BUTTONS = {
     BTN_LS, BTN_PAY, BTN_SO, BTN_BANKINFO,
-    BTN_NEW, BTN_HELP, BTN_EMAIL,
+    BTN_NEW, BTN_HELP,
 }
 
 
@@ -42,7 +41,7 @@ MENU_CONNECTED = ReplyKeyboardMarkup(
 
 MENU_NEW_USER = ReplyKeyboardMarkup(
     [
-        [KeyboardButton(BTN_NEW),   KeyboardButton(BTN_EMAIL)],
+        [KeyboardButton(BTN_NEW)],
         [KeyboardButton(BTN_HELP)],
     ],
     resize_keyboard=True,

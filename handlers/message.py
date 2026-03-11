@@ -9,7 +9,7 @@ from handlers.utils import require_sheet
 from handlers.books import handle_rename_input
 from handlers.menu import (
     ALL_MENU_BUTTONS, BTN_LS, BTN_PAY, BTN_SO,
-    BTN_BANKINFO, BTN_NEW, BTN_HELP, BTN_EMAIL,
+    BTN_BANKINFO, BTN_NEW, BTN_HELP,
     get_menu, MENU_CONNECTED,
 )
 
@@ -20,6 +20,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── Xử lý sticky menu buttons ──
     if text in ALL_MENU_BUTTONS:
         return await _handle_menu_button(update, context, text)
+
+    # ── Awaiting input flows ──
+
+    # Đang chờ nhập tên sổ mới
+    if context.user_data.get("awaiting_new_book"):
+        context.user_data.pop("awaiting_new_book", None)
+        # Inject text as args và gọi new_book_command
+        context.args = text.split()
+        from handlers.books import new_book_command
+        return await new_book_command(update, context)
+
+    # Đang chờ nhập thông tin ngân hàng
+    if context.user_data.get("awaiting_bank_input"):
+        context.user_data.pop("awaiting_bank_input", None)
+        context.args = text.split()
+        from handlers.bank import set_bank_command
+        return await set_bank_command(update, context)
 
     # Ưu tiên xử lý rename nếu đang chờ nhập tên mới
     if await handle_rename_input(update, context):
@@ -45,10 +62,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sheet_id,
                 sheet_title,
             )
-            # Gửi xác nhận + cập nhật menu sang MENU_CONNECTED
             await update.message.reply_text(
                 f"✅ Đã kết nối sổ: **{sheet_title}**\n\n"
-                "👇 Dùng menu bên dưới để thao tác nhanh.",
+                "👇 Dùng menu bên dưới để thao tác.",
                 parse_mode="Markdown",
                 reply_markup=MENU_CONNECTED
             )
@@ -56,11 +72,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logging.error(f"Sheet error: {e}")
             await update.message.reply_text(
                 f"❌ Không kết nối được Sheet.\n\n"
-                f"🔍 Lỗi: `{e}`\n\n"
-                "👉 Kiểm tra:\n"
-                "• Link Sheet có đúng không?\n"
-                "• Bot đã được share quyền **Editor** chưa?\n"
-                "• Dùng /email để lấy email Bot.",
+                f"🔍 Lỗi: `{e}`",
                 parse_mode="Markdown"
             )
         return
@@ -73,12 +85,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ws = get_google_client().open_by_key(sid).sheet1
         ensure_sheet_total(ws)
-
-        # --- Parse input ---
-        # Format: [ngày] <tên món> <số tiền> [ghi chú]
-        # VD: "26/2 xúc xích 10"   → ngày=26/02/2026, item=xúc xích, amount=10k
-        #     "Banh mi 20"          → ngày=hôm nay, item=Banh mi, amount=20k
-        #     "Pho 40 ngon lắm"     → ngày=hôm nay, item=Pho, amount=40k, note=ngon lắm
 
         remaining = text
         today = datetime.now()
@@ -106,14 +112,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 2) Tách số tiền (số cuối cùng trong chuỗi còn lại)
         money_match = re.search(r"(\d+(?:\.\d+)?)\s*$", remaining)
         if not money_match:
-            # Thử tìm số cuối cùng bất kỳ đâu
             all_nums = list(re.finditer(r"\d+(?:\.\d+)?", remaining))
             if not all_nums:
                 return
             money_match = all_nums[-1]
 
         amount = float(money_match.group()) * 1000
-        amount = int(amount)  # Ghi số nguyên vào sheet, tránh float issue
+        amount = int(amount)
 
         # 3) Phần trước số tiền = tên món, phần sau = ghi chú
         before_money = remaining[:money_match.start()].strip()
@@ -130,7 +135,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             note,
         ]])
 
-        # sau khi ws.update(...) xong
         total_raw = ws.acell("G1", value_render_option="UNFORMATTED_VALUE").value
         total = total_raw if total_raw is not None else 0
 
@@ -145,50 +149,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"❌ Không ghi được vào sổ.\n\n"
             f"🔍 Lỗi: `{e}`\n\n"
-            "👉 Thử:\n"
-            "• Dùng /so để chọn lại sổ\n"
-            "• Hoặc gửi lại link Sheet\n"
-            "• Kiểm tra Bot có quyền Editor: /email",
+            "👉 Thử dùng /so để chọn lại sổ.",
             parse_mode="Markdown"
         )
 
 
 async def _handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-    """Dispatch sticky-menu button presses to the appropriate command handler."""
+    """Dispatch sticky-menu button presses to interactive flows."""
+
+    # ── 🧾 Xem nợ → trực tiếp hiển thị ──
     if text == BTN_LS:
         from handlers.books import ls_command
         return await ls_command(update, context)
 
+    # ── 📲 Thanh toán → trực tiếp tạo QR ──
     if text == BTN_PAY:
         from handlers.bank import pay_command
         return await pay_command(update, context)
 
+    # ── 📂 Chọn sổ → hiện danh sách ──
     if text == BTN_SO:
         from handlers.books import list_books_command
         return await list_books_command(update, context)
 
+    # ── 💳 Ngân hàng → hiển thị info + gợi ý chỉnh sửa ──
     if text == BTN_BANKINFO:
-        from handlers.bank import bank_info_command
-        return await bank_info_command(update, context)
+        from handlers.bank import bank_menu_flow
+        return await bank_menu_flow(update, context)
 
+    # ── ➕ Tạo sổ → hỏi tên, chờ input ──
     if text == BTN_NEW:
-        # /new cần args, nên gợi ý nhập tên
+        context.user_data["awaiting_new_book"] = True
         menu = get_menu(context)
         return await update.message.reply_text(
             "➕ **Tạo sổ mới**\n\n"
-            "📝 Hãy nhập lệnh kèm tên sổ:\n"
-            "`/new <tên sổ>`\n\n"
-            "📌 VD:\n"
-            "• `/new AnSang`\n"
-            "• `/new Nhom Ban Than`",
+            "📝 Nhập tên sổ muốn tạo:\n\n"
+            "📌 VD: `AnSang` hoặc `Nhom Ban Than`",
             parse_mode="Markdown",
             reply_markup=menu
         )
 
+    # ── 📖 Hướng dẫn ──
     if text == BTN_HELP:
         from handlers.start_help import help_command
         return await help_command(update, context)
-
-    if text == BTN_EMAIL:
-        from handlers.start_help import email_command
-        return await email_command(update, context)

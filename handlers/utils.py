@@ -37,13 +37,9 @@ async def require_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     from handlers.menu import MENU_NEW_USER
     await update.message.reply_text(
-        "⚠️ **Chưa kết nối sổ!**\n\n"
-        "👉 **Cách kết nối:**\n"
-        "1️⃣ Dùng /email để lấy email Bot\n"
-        "2️⃣ Mở Google Sheet → Share quyền **Editor** cho email Bot\n"
-        "3️⃣ Gửi link Sheet vào đây\n\n"
-        "📌 Hoặc bấm **➕ Tạo sổ** bên dưới.\n"
-        "📂 Chọn sổ đã có: /so",
+        "⚠️ **Chưa có sổ nào!**\n\n"
+        "👇 Bấm **➕ Tạo sổ** để bắt đầu.\n"
+        "Hoặc dùng /so để chọn sổ đã có.",
         parse_mode="Markdown",
         reply_markup=MENU_NEW_USER
     )

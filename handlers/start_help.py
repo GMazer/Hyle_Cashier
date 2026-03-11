@@ -2,22 +2,20 @@ from telegram import Update, BotCommand, MenuButtonCommands, BotCommandScopeChat
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from core.database import db_touch_user
-from config import BOT_EMAIL
 from handlers.menu import get_menu
 
 COMMANDS = [
-    BotCommand("start",    "🏠 Bắt đầu / Hướng dẫn kết nối"),
-    BotCommand("help",     "📖 Xem cách ghi nợ & lệnh tắt"),
-    BotCommand("ls",       "🧾 Xem 5 khoản chi gần nhất + tổng"),
-    BotCommand("del",      "🗑 Xóa 1 dòng theo STT (VD: /del 3)"),
-    BotCommand("so",       "📂 Chọn / đổi sổ đang dùng"),
+    BotCommand("start",    "🏠 Bắt đầu"),
+    BotCommand("help",     "📖 Hướng dẫn sử dụng"),
+    BotCommand("ls",       "🧾 Xem chi tiêu gần nhất"),
+    BotCommand("del",      "🗑 Xóa dòng (VD: /del 3)"),
+    BotCommand("so",       "📂 Chọn / đổi sổ"),
     BotCommand("new",      "➕ Tạo sổ mới"),
     BotCommand("rename",   "✏️ Đổi tên sổ"),
     BotCommand("done",     "🗑 Chốt sổ – xóa dữ liệu cũ"),
-    BotCommand("setbank",  "🏦 Cài ngân hàng (VD: /setbank MB 123 TÊN)"),
-    BotCommand("bankinfo", "💳 Xem STK liên kết với sổ hiện tại"),
+    BotCommand("setbank",  "🏦 Cài ngân hàng"),
+    BotCommand("bankinfo", "💳 Xem thông tin ngân hàng"),
     BotCommand("pay",      "📲 Tạo mã QR thanh toán"),
-    BotCommand("email",    "📧 Lấy Email Bot để cấp quyền Sheet"),
     BotCommand("delbook",  "🗑 Xóa sổ (vĩnh viễn)"),
 ]
 
@@ -30,7 +28,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sheets = await db_list_user_sheets(update.effective_user.id)
         if sheets:
             context.user_data["books"] = {r["sheet_id"]: r["sheet_title"] for r in sheets}
-            # Chọn sổ gần nhất (updated_at DESC)
             latest = sheets[0]
             context.user_data["current_sheet_id"] = latest["sheet_id"]
             context.user_data["current_sheet_url"] = latest["sheet_url"]
@@ -49,18 +46,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (
             f"👋 **Xin chào {user_name}!**\n\n"
             f"📂 Sổ hiện tại: **{current_book}**\n\n"
-            "💵 **Ghi nợ nhanh:**\n"
-            "   `Banh mi 20` (Hôm nay)\n"
-            "   `30/1 Pho 40` (Ngày cũ)\n\n"
-            "⚙️ **Lệnh tắt:** /ls, /so, /pay, /help\n\n"
-            "👇 Dùng menu bên dưới để thao tác nhanh."
+            "💵 **Ghi chi tiêu nhanh:**\n"
+            "   `Banh mi 20` → hôm nay\n"
+            "   `30/1 Pho 40` → ngày cũ\n\n"
+            "👇 Dùng menu bên dưới để thao tác."
         )
     else:
         msg = (
-            f"👋 **Chào mừng {user_name} đến với Bot Ghi Nợ Ăn Sáng!**\n\n"
-            f"1️⃣ Share quyền Editor cho: `{BOT_EMAIL}`\n"
-            f"2️⃣ Gửi Link Sheet vào đây để kết nối.\n\n"
-            "👇 Hoặc bấm **➕ Tạo sổ** bên dưới."
+            f"👋 **Chào mừng {user_name}!**\n\n"
+            "Mình là Bot Ghi Nợ Ăn Sáng 🍜\n"
+            "Giúp bạn ghi chép chi tiêu nhóm dễ dàng!\n\n"
+            "👇 Bấm **➕ Tạo sổ** bên dưới để bắt đầu."
         )
 
     await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=menu)
@@ -69,34 +65,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     menu = get_menu(context)
     await update.message.reply_text(
-        "✅ **Bước 1:** Share quyền **Editor** cho email bot:\n"
-        f"`{BOT_EMAIL}`",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    await update.message.reply_text(
-        "✅ **Bước 2:** Gửi **link Google Sheet** vào đây.\n\n"
-        "Ví dụ:\n`https://docs.google.com/spreadsheets/d/...`",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    await update.message.reply_text(
-        "💵 **Ghi nợ nhanh:**\n"
-        "• Hôm nay: `Banh mi 20`\n"
-        "• Ngày cũ: `30/01 Pho 40`\n\n"
-        "📂 **Quản lý sổ:** `/so` | `/new` | `/ls`\n"
-        "🏦 **Ngân hàng:** `/setbank MB 0123456789 TEN` → `/pay`\n"
-        "🧾 **Khác:** `/email` | `/done` | `/start`\n\n"
-        "👇 Hoặc dùng menu bên dưới để thao tác nhanh.",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=menu
-    )
-
-
-async def email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu = get_menu(context)
-    await update.message.reply_text(
-        f"📧 Email Bot:\n`{BOT_EMAIL}`\n\n"
-        "👉 Share quyền **Editor** cho email này trên Google Sheet,\n"
-        "rồi gửi link Sheet vào đây.",
+        "📖 **Hướng dẫn sử dụng**\n\n"
+        "**1️⃣ Tạo sổ mới**\n"
+        "Bấm **➕ Tạo sổ** → nhập tên → xong!\n\n"
+        "**2️⃣ Ghi chi tiêu**\n"
+        "Gõ trực tiếp, VD:\n"
+        "• `Banh mi 20` → 20,000đ hôm nay\n"
+        "• `30/1 Pho 40` → 40,000đ ngày 30/01\n"
+        "• `Com tam 35 ngon` → kèm ghi chú\n\n"
+        "**3️⃣ Xem & xóa**\n"
+        "• 🧾 **Xem nợ** → 5 dòng gần nhất + tổng\n"
+        "• `/del 3` → xóa dòng thứ 3\n\n"
+        "**4️⃣ Thanh toán**\n"
+        "• 💳 **Ngân hàng** → cài STK\n"
+        "• 📲 **Thanh toán** → tạo mã QR\n\n"
+        "**5️⃣ Quản lý sổ**\n"
+        "• 📂 **Chọn sổ** → đổi sổ đang dùng\n"
+        "• `/rename` → đổi tên sổ\n"
+        "• `/delbook` → xóa sổ vĩnh viễn\n"
+        "• `/done` → xóa trắng dữ liệu",
         parse_mode="Markdown",
         reply_markup=menu
     )

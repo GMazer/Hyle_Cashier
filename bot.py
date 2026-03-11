@@ -15,13 +15,13 @@ from telegram.ext import (
 
 from config import TOKEN
 from core.database import db_init
-from handlers.start_help import start, help_command, email_command, COMMANDS
+from handlers.start_help import start, help_command, COMMANDS
 from handlers.books import (
     list_books_command, button_callback, ls_command,
     del_command, new_book_command, done_command, rename_command,
     delbook_command,
 )
-from handlers.bank import set_bank_command, pay_command, bank_info_command
+from handlers.bank import set_bank_command, pay_command, bank_info_command, bank_callback
 from handlers.message import handle_message
 from handlers.admin import broadcast_command
 
@@ -35,7 +35,6 @@ def _register_handlers(app):
     """Register all command / message handlers on *app*."""
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("email", email_command))
     app.add_handler(CommandHandler("ls", ls_command))
     app.add_handler(CommandHandler("del", del_command))
     app.add_handler(CommandHandler("so", list_books_command))
@@ -47,6 +46,7 @@ def _register_handlers(app):
     app.add_handler(CommandHandler("bankinfo", bank_info_command))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
     app.add_handler(CommandHandler("delbook", delbook_command))
+    app.add_handler(CallbackQueryHandler(bank_callback, pattern=r"^BANK_"))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
