@@ -14,11 +14,12 @@ from telegram.ext import (
 )
 
 from config import TOKEN
-from db import db_init
+from core.database import db_init
 from handlers.start_help import start, help_command, email_command, COMMANDS
 from handlers.books import (
     list_books_command, button_callback, ls_command,
     del_command, new_book_command, done_command, rename_command,
+    delbook_command,
 )
 from handlers.bank import set_bank_command, pay_command, bank_info_command
 from handlers.message import handle_message
@@ -45,6 +46,7 @@ def _register_handlers(app):
     app.add_handler(CommandHandler("pay", pay_command))
     app.add_handler(CommandHandler("bankinfo", bank_info_command))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
+    app.add_handler(CommandHandler("delbook", delbook_command))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

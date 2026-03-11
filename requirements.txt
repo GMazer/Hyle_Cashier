@@ -2,5 +2,6 @@ python-telegram-bot==22.6
 starlette
 uvicorn[standard]
 gspread
-oauth2client
+google-auth
+google-auth-oauthlib
 asyncpg

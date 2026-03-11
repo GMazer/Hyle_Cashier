@@ -3,8 +3,8 @@ import logging
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
-from db import db_touch_user, db_upsert_user_sheet
-from sheets import get_google_client, ensure_sheet_total, format_vnd
+from core.database import db_touch_user, db_upsert_user_sheet
+from core.sheets import get_google_client, ensure_sheet_total, format_vnd
 from handlers.utils import require_sheet
 from handlers.books import handle_rename_input
 from handlers.menu import (

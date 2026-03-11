@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import ADMIN_ID
-from db import db_get_all_chat_ids
+from core.database import db_get_all_chat_ids
 
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:

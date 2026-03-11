@@ -1,0 +1,17 @@
+# Secrets
+credentials.json
+token.json
+cred.json
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Bot persistence
+*.pkl
+
+# IDE
+.vscode/
+.idea/

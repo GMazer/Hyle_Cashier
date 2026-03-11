@@ -2,8 +2,9 @@ import logging
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from db import db_list_user_sheets, db_rename_sheet
-from sheets import get_google_client, ensure_sheet_total, format_vnd
+from core.database import db_list_user_sheets, db_rename_sheet, db_delete_user_sheet, db_upsert_user_sheet
+from core.sheets import get_google_client, ensure_sheet_total, format_vnd
+from config import DRIVE_FOLDER_ID
 from handlers.utils import require_sheet
 from handlers.menu import get_menu, MENU_CONNECTED
 
@@ -41,6 +42,61 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✏️ Đang đổi tên sổ: **{old_name}**\n\nHãy nhập tên mới:",
             parse_mode="Markdown"
         )
+        return
+
+    # Xử lý chọn sổ để XÓA
+    if data.startswith("DELBOOK_PICK|"):
+        _, sid = data.split("|", 1)
+        book_name = context.user_data.get("books", {}).get(sid, sid)
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Xác nhận xóa", callback_data=f"DELBOOK_CONFIRM|{sid}"),
+                InlineKeyboardButton("❌ Hủy", callback_data="DELBOOK_CANCEL"),
+            ]
+        ]
+        await query.edit_message_text(
+            f"⚠️ **Bạn có chắc muốn xóa sổ \"{book_name}\"?**\n\n"
+            "🗑 Sổ sẽ bị xóa **vĩnh viễn** khỏi Google Drive!\n"
+            "Dữ liệu trong sổ sẽ **không thể khôi phục**.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+
+    # Xác nhận xóa sổ
+    if data.startswith("DELBOOK_CONFIRM|"):
+        _, sid = data.split("|", 1)
+        book_name = context.user_data.get("books", {}).get(sid, sid)
+        try:
+            gc = get_google_client()
+            if gc:
+                gc.del_spreadsheet(sid)
+            uid = update.effective_user.id
+            await db_delete_user_sheet(uid, sid)
+
+            # Xóa khỏi cache
+            if "books" in context.user_data:
+                context.user_data["books"].pop(sid, None)
+            if context.user_data.get("current_sheet_id") == sid:
+                context.user_data.pop("current_sheet_id", None)
+                context.user_data.pop("current_book_name", None)
+
+            await query.edit_message_text(
+                f"🗑 Đã xóa sổ **{book_name}** thành công!",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logging.error(f"Lỗi xóa sổ: {e}")
+            await query.edit_message_text(
+                f"❌ Không xóa được sổ.\n\n"
+                f"🔍 Lỗi: `{e}`",
+                parse_mode="Markdown"
+            )
+        return
+
+    # Hủy xóa sổ
+    if data == "DELBOOK_CANCEL":
+        await query.edit_message_text("✅ Đã hủy xóa sổ.")
         return
 
     # Xử lý chọn sổ thông thường
@@ -192,7 +248,8 @@ async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not gc:
             return await update.message.reply_text("❌ Lỗi kết nối Google.")
 
-        sh = gc.create(book_name)
+        # Tạo spreadsheet trực tiếp trong folder Drive (nếu có)
+        sh = gc.create(book_name, folder_id=DRIVE_FOLDER_ID)
         sh.share(None, perm_type="anyone", role="writer")
         ws = sh.sheet1
         ws.update(range_name="A1:D1", values=[["Ngày", "Món", "Tiền", "Ghi chú"]])
@@ -205,6 +262,15 @@ async def new_book_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["books"][sh.id] = book_name
         context.user_data["current_sheet_id"] = sh.id
         context.user_data["current_book_name"] = book_name
+
+        # Lưu vào DB
+        await db_upsert_user_sheet(
+            update.effective_user.id,
+            update.effective_chat.id,
+            sh.url,
+            sh.id,
+            book_name,
+        )
 
         await update.message.reply_text(
             f"✅ **Tạo sổ thành công!**\n"
@@ -233,6 +299,31 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ws = get_google_client().open_by_key(sid).sheet1
     ws.batch_clear(["A2:D1000"])
     await update.message.reply_text("✅ Đã xóa trắng sổ nợ.")
+
+
+async def delbook_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Xóa sổ khỏi Google Drive và DB."""
+    uid = update.effective_user.id
+    rows = await db_list_user_sheets(uid)
+    if not rows:
+        return await update.message.reply_text(
+            "⚠️ Bạn chưa có sổ nào để xóa.\n\n"
+            "👉 Tạo sổ mới: `/new <tên sổ>`\n"
+            "Hoặc gửi link Google Sheet vào đây.",
+            parse_mode="Markdown"
+        )
+
+    context.user_data["books"] = {r["sheet_id"]: r["sheet_title"] for r in rows}
+    keyboard = [
+        [InlineKeyboardButton(f"🗑 {i+1}. {r['sheet_title']}", callback_data=f"DELBOOK_PICK|{r['sheet_id']}")]
+        for i, r in enumerate(rows)
+    ]
+    await update.message.reply_text(
+        "🗑 **Chọn sổ muốn xóa:**\n\n"
+        "⚠️ Sổ sẽ bị xóa vĩnh viễn khỏi Google Drive!",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
 async def rename_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

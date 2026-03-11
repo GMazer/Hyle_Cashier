@@ -2,20 +2,47 @@ import os
 import json
 import logging
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 
 def get_google_client():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    json_creds = os.environ.get("GOOGLE_CREDENTIALS")
+    """
+    Authenticate via OAuth2 User credentials (tài khoản cá nhân).
+    Cần 2 env vars:
+      - GOOGLE_CREDENTIALS: nội dung credentials.json (OAuth Client ID/Secret)
+      - GOOGLE_TOKEN: nội dung token.json (access + refresh token)
+    Hoặc file trên disk: credentials.json + token.json
+    """
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ]
+
     try:
-        if json_creds:
-            creds_dict = json.loads(json_creds.strip())
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        elif os.path.exists("cred.json"):
-            creds = ServiceAccountCredentials.from_json_keyfile_name("cred.json", scope)
-        else:
+        creds = None
+
+        # 1) Load token từ env var hoặc file
+        token_json = os.environ.get("GOOGLE_TOKEN")
+        if token_json:
+            token_data = json.loads(token_json.strip())
+            creds = Credentials.from_authorized_user_info(token_data, scopes)
+        elif os.path.exists("token.json"):
+            creds = Credentials.from_authorized_user_file("token.json", scopes)
+
+        # 2) Refresh nếu expired
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            # Lưu lại token mới vào file (local dev)
+            if os.path.exists("token.json"):
+                with open("token.json", "w") as f:
+                    f.write(creds.to_json())
+
+        if not creds or not creds.valid:
+            logging.error("Google OAuth token không hợp lệ hoặc chưa có. Chạy auth_setup.py để tạo token.")
             return None
+
         return gspread.authorize(creds)
+
     except Exception as e:
         logging.error(f"Lỗi Auth: {e}")
         return None

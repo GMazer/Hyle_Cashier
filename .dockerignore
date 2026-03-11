@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+*.pkl
+.env
+*.md
+.vscode/
+.idea/
+credentials.json
+token.json
+auth_setup.py

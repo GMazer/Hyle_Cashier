@@ -1,7 +1,7 @@
 from telegram import Update, BotCommand, MenuButtonCommands, BotCommandScopeChat
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from db import db_touch_user
+from core.database import db_touch_user
 from config import BOT_EMAIL
 from handlers.menu import get_menu
 
@@ -18,6 +18,7 @@ COMMANDS = [
     BotCommand("bankinfo", "💳 Xem STK liên kết với sổ hiện tại"),
     BotCommand("pay",      "📲 Tạo mã QR thanh toán"),
     BotCommand("email",    "📧 Lấy Email Bot để cấp quyền Sheet"),
+    BotCommand("delbook",  "🗑 Xóa sổ (vĩnh viễn)"),
 ]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -25,7 +26,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Auto-restore session từ DB
     if not context.user_data.get("current_sheet_id"):
-        from db import db_list_user_sheets
+        from core.database import db_list_user_sheets
         sheets = await db_list_user_sheets(update.effective_user.id)
         if sheets:
             context.user_data["books"] = {r["sheet_id"]: r["sheet_title"] for r in sheets}

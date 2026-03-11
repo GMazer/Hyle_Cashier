@@ -122,3 +122,15 @@ async def db_rename_sheet(telegram_user_id: int, sheet_id: str, new_title: str):
         result = await conn.execute(q, new_title, telegram_user_id, sheet_id)
         # result dạng "UPDATE 1" nếu thành công
         return result == "UPDATE 1"
+
+async def db_delete_user_sheet(telegram_user_id: int, sheet_id: str):
+    """Xóa record sổ khỏi DB."""
+    if DB_POOL is None:
+        return False
+    q = """
+    DELETE FROM user_sheets
+    WHERE telegram_user_id = $1 AND sheet_id = $2;
+    """
+    async with DB_POOL.acquire() as conn:
+        result = await conn.execute(q, telegram_user_id, sheet_id)
+        return result == "DELETE 1"

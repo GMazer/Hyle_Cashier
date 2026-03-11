@@ -2,7 +2,7 @@ import difflib
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import BANK_CODES
-from sheets import get_google_client, ensure_sheet_format
+from core.sheets import get_google_client, ensure_sheet_format
 from handlers.utils import require_sheet
 
 def normalize_bank_code(raw: str):
