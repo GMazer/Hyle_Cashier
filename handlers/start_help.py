@@ -17,6 +17,7 @@ COMMANDS = [
     BotCommand("bankinfo", "💳 Xem thông tin ngân hàng"),
     BotCommand("pay",      "📲 Tạo mã QR thanh toán"),
     BotCommand("delbook",  "🗑 Xóa sổ (vĩnh viễn)"),
+    BotCommand("report",   "🚨 Báo lỗi / góp ý"),
 ]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,7 +57,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👋 **Chào mừng {user_name}!**\n\n"
             "Mình là Bot Ghi Nợ Ăn Sáng 🍜\n"
             "Giúp bạn ghi chép chi tiêu nhóm dễ dàng!\n\n"
-            "👇 Bấm **➕ Tạo sổ** bên dưới để bắt đầu."
+            "👇 Bấm **➕ Tạo sổ** để bắt đầu,\n"
+            "hoặc **🚨 Báo lỗi** nếu cần hỗ trợ."
         )
 
     await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=menu)
@@ -83,7 +85,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 📂 **Chọn sổ** → đổi sổ đang dùng\n"
         "• `/rename` → đổi tên sổ\n"
         "• `/delbook` → xóa sổ vĩnh viễn\n"
-        "• `/done` → xóa trắng dữ liệu",
+        "• `/done` → xóa trắng dữ liệu\n\n"
+        "**6️⃣ Báo lỗi / góp ý**\n"
+        "• Bấm **🚨 Báo lỗi** trong menu\n"
+        "• Hoặc dùng `/report` để gửi tin nhắn cho admin",
         parse_mode="Markdown",
         reply_markup=menu
     )

@@ -23,7 +23,7 @@ from handlers.books import (
 )
 from handlers.bank import set_bank_command, pay_command, bank_info_command, bank_callback
 from handlers.message import handle_message
-from handlers.admin import broadcast_command
+from handlers.admin import broadcast_command, report_issue_command
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -45,6 +45,7 @@ def _register_handlers(app):
     app.add_handler(CommandHandler("pay", pay_command))
     app.add_handler(CommandHandler("bankinfo", bank_info_command))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
+    app.add_handler(CommandHandler("report", report_issue_command))
     app.add_handler(CommandHandler("delbook", delbook_command))
     app.add_handler(CallbackQueryHandler(bank_callback, pattern=r"^BANK_"))
     app.add_handler(CallbackQueryHandler(button_callback))

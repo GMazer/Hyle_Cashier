@@ -9,7 +9,7 @@ from handlers.utils import require_sheet
 from handlers.books import handle_rename_input
 from handlers.menu import (
     ALL_MENU_BUTTONS, BTN_LS, BTN_PAY, BTN_SO,
-    BTN_BANKINFO, BTN_NEW, BTN_HELP,
+    BTN_BANKINFO, BTN_NEW, BTN_HELP, BTN_REPORT,
     get_menu, MENU_CONNECTED,
 )
 
@@ -37,6 +37,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.args = text.split()
         from handlers.bank import set_bank_command
         return await set_bank_command(update, context)
+
+    # Đang chờ nhập báo lỗi / góp ý
+    if context.user_data.get("awaiting_issue_report"):
+        context.user_data.pop("awaiting_issue_report", None)
+        from handlers.admin import submit_issue_report
+        return await submit_issue_report(update, context)
 
     # Ưu tiên xử lý rename nếu đang chờ nhập tên mới
     if await handle_rename_input(update, context):
@@ -193,3 +199,8 @@ async def _handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE
     if text == BTN_HELP:
         from handlers.start_help import help_command
         return await help_command(update, context)
+
+    # ── 🚨 Báo lỗi ──
+    if text == BTN_REPORT:
+        from handlers.admin import report_issue_command
+        return await report_issue_command(update, context)
