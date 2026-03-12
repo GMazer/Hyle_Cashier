@@ -296,9 +296,29 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sid = await require_sheet(update, context)
     if not sid:
         return
-    ws = get_google_client().open_by_key(sid).sheet1
-    ws.batch_clear(["A2:D1000"])
-    await update.message.reply_text("✅ Đã xóa trắng sổ nợ.")
+    book_name = context.user_data.get("current_book_name", "Sổ hiện tại")
+    try:
+        ws = get_google_client().open_by_key(sid).sheet1
+        # Xóa toàn bộ dữ liệu từ row 2 trở đi (giữ header row 1)
+        row_count = ws.row_count
+        if row_count > 1:
+            # Xóa hàng thật (không chỉ clear value) để SUM reset chắc chắn
+            ws.delete_rows(2, row_count)
+        # Reset lại formula tổng
+        ws.update_acell("G1", "=SUM(C:C)")
+        await update.message.reply_text(
+            f"✅ **Đã chốt sổ \"{book_name}\"!**\n"
+            "🗑 Toàn bộ dữ liệu đã được xóa.\n"
+            "💰 Tổng: 0 đ",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"Lỗi chốt sổ: {e}")
+        await update.message.reply_text(
+            f"❌ Không xóa được dữ liệu.\n"
+            f"🔍 Lỗi: `{e}`",
+            parse_mode="Markdown"
+        )
 
 
 async def delbook_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
