@@ -49,7 +49,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📂 Sổ hiện tại: **{current_book}**\n\n"
             "💵 **Ghi chi tiêu nhanh:**\n"
             "   `Banh mi 20` → hôm nay\n"
-            "   `30/1 Pho 40` → ngày cũ\n\n"
+            "   `30/1 Pho 40` → ngày cũ\n"
+            "   `Cafe 25\\nBanh mi 20\\nGui xe 5` → nhiều khoản / 1 tin nhắn\n\n"
             "👇 Dùng menu bên dưới để thao tác."
         )
     else:
@@ -74,7 +75,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Gõ trực tiếp, VD:\n"
         "• `Banh mi 20` → 20,000đ hôm nay\n"
         "• `30/1 Pho 40` → 40,000đ ngày 30/01\n"
-        "• `Com tam 35 ngon` → kèm ghi chú\n\n"
+        "• `Com tam 35 ngon` → kèm ghi chú\n"
+        "• Có thể nhập **nhiều khoản trong 1 tin nhắn**, mỗi dòng 1 khoản:\n"
+        "  `Cafe 25\\nBanh mi 20\\nGui xe 5`\n\n"
         "**3️⃣ Xem & xóa**\n"
         "• 🧾 **Xem nợ** → 5 dòng gần nhất + tổng\n"
         "• `/del 3` → xóa dòng thứ 3\n\n"
