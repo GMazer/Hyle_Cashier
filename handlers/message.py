@@ -13,6 +13,47 @@ from handlers.menu import (
     get_menu, MENU_CONNECTED,
 )
 
+
+def _parse_entry_line(line: str, today: datetime):
+    remaining = line.strip()
+    if not remaining:
+        return None
+
+    date_match = re.match(r"^(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\s+", remaining)
+    if date_match:
+        day = int(date_match.group(1))
+        month = int(date_match.group(2))
+        year_str = date_match.group(3)
+        if year_str:
+            year = int(year_str)
+            if year < 100:
+                year += 2000
+        else:
+            year = today.year
+        try:
+            date_str = f"{day:02d}/{month:02d}/{year}"
+        except Exception:
+            date_str = today.strftime("%d/%m/%Y")
+        remaining = remaining[date_match.end():]
+    else:
+        date_str = today.strftime("%d/%m/%Y")
+
+    money_match = re.search(r"(\d+(?:\.\d+)?)\s*$", remaining)
+    if not money_match:
+        all_nums = list(re.finditer(r"\d+(?:\.\d+)?", remaining))
+        if not all_nums:
+            return None
+        money_match = all_nums[-1]
+
+    amount = int(float(money_match.group()) * 1000)
+    before_money = remaining[:money_match.start()].strip()
+    after_money = remaining[money_match.end():].strip()
+
+    item = before_money if before_money else "Khác"
+    note = after_money
+
+    return [date_str, item, amount, note]
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db_touch_user(update.effective_user.id, update.effective_chat.id)
     text = update.message.text.strip()
@@ -92,64 +133,59 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws = get_google_client().open_by_key(sid).sheet1
         ensure_sheet_total(ws)
 
-        remaining = text
         today = datetime.now()
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return
 
-        # 1) Tách ngày ở đầu (nếu có): d/m hoặc d/m/y
-        date_match = re.match(r"^(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\s+", remaining)
-        if date_match:
-            day = int(date_match.group(1))
-            month = int(date_match.group(2))
-            year_str = date_match.group(3)
-            if year_str:
-                year = int(year_str)
-                if year < 100:
-                    year += 2000
-            else:
-                year = today.year
-            try:
-                date_str = f"{day:02d}/{month:02d}/{year}"
-            except Exception:
-                date_str = today.strftime("%d/%m/%Y")
-            remaining = remaining[date_match.end():]
-        else:
-            date_str = today.strftime("%d/%m/%Y")
+        entries = []
+        invalid_lines = []
+        for idx, line in enumerate(lines, 1):
+            parsed = _parse_entry_line(line, today)
+            if parsed is None:
+                invalid_lines.append(idx)
+                continue
+            entries.append(parsed)
 
-        # 2) Tách số tiền (số cuối cùng trong chuỗi còn lại)
-        money_match = re.search(r"(\d+(?:\.\d+)?)\s*$", remaining)
-        if not money_match:
-            all_nums = list(re.finditer(r"\d+(?:\.\d+)?", remaining))
-            if not all_nums:
-                return
-            money_match = all_nums[-1]
+        if not entries:
+            return await update.message.reply_text(
+                "❌ Không nhận được khoản hợp lệ nào.\n\n"
+                "Ví dụ nhập nhiều dòng:\n"
+                "`cafe 25`\n"
+                "`banh mi 20`\n"
+                "`gui xe 5`",
+                parse_mode="Markdown"
+            )
 
-        amount = float(money_match.group()) * 1000
-        amount = int(amount)
-
-        # 3) Phần trước số tiền = tên món, phần sau = ghi chú
-        before_money = remaining[:money_match.start()].strip()
-        after_money = remaining[money_match.end():].strip()
-
-        item = before_money if before_money else "Khác"
-        note = after_money
-
-        next_row = len(ws.col_values(1)) + 1
-        ws.update(f"A{next_row}:D{next_row}", [[
-            date_str,
-            item,
-            amount,
-            note,
-        ]])
+        start_row = len(ws.col_values(1)) + 1
+        end_row = start_row + len(entries) - 1
+        ws.update(f"A{start_row}:D{end_row}", entries)
 
         total_raw = ws.acell("G1", value_render_option="UNFORMATTED_VALUE").value
         total = total_raw if total_raw is not None else 0
+        total_added = sum(entry[2] for entry in entries)
 
-        await update.message.reply_text(
-            f"✅ Ghi: {item} ({format_vnd(amount)})\n"
-            f"📅 Ngày: {date_str}\n"
-            f"📝 Ghi chú: {note if note else '—'}\n"
+        preview_lines = [
+            f"• {item} ({format_vnd(amount)})"
+            for _, item, amount, _ in entries[:5]
+        ]
+        if len(entries) > 5:
+            preview_lines.append(f"• ... và thêm {len(entries) - 5} khoản nữa")
+
+        message = (
+            f"✅ Đã ghi **{len(entries)} khoản**\n"
+            f"📋 " + "\n".join(preview_lines) + "\n"
+            f"💸 Cộng thêm: {format_vnd(total_added)}\n"
             f"💰 Tổng: {format_vnd(total)}"
         )
+
+        if invalid_lines:
+            bad = ", ".join(str(i) for i in invalid_lines[:10])
+            message += f"\n⚠️ Bỏ qua dòng lỗi: {bad}"
+            if len(invalid_lines) > 10:
+                message += "..."
+
+        await update.message.reply_text(message, parse_mode="Markdown")
     except Exception as e:
         logging.error(f"Ghi nợ lỗi: {e}")
         await update.message.reply_text(
